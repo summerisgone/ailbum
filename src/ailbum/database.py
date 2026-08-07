@@ -14,7 +14,7 @@ import numpy as np
 from ailbum.metadata import ImageMetadata
 from ailbum.models import PersonRecord, PhotoRecord
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -145,6 +145,8 @@ ON photo_selections(run_id, position);
 CREATE TABLE IF NOT EXISTS desktop_run_settings (
     run_id TEXT PRIMARY KEY REFERENCES analysis_runs(id) ON DELETE CASCADE,
     target_count INTEGER NOT NULL DEFAULT 24 CHECK (target_count > 0),
+    selection_initialized INTEGER NOT NULL DEFAULT 0
+        CHECK (selection_initialized IN (0, 1)),
     updated_at TEXT NOT NULL
 );
 """
@@ -620,6 +622,7 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
             ).fetchall()
             target_count = 24
         else:
+            _initialize_desktop_selection(connection, str(run["id"]))
             rows = connection.execute(
                 """
                 WITH face_summary AS (
@@ -688,6 +691,17 @@ def set_desktop_favorite(
         ).fetchone()
         if exists is None:
             raise ValueError(f"Image {image_id} does not belong to analysis run {run_id}")
+        connection.execute(
+            """
+            INSERT INTO desktop_run_settings (
+                run_id, target_count, selection_initialized, updated_at
+            ) VALUES (?, 24, 1, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                selection_initialized = 1,
+                updated_at = excluded.updated_at
+            """,
+            (run_id, utc_now()),
+        )
         if favorite:
             next_position = connection.execute(
                 "SELECT COALESCE(MAX(position), 0) + 1 FROM photo_selections WHERE run_id = ?",
@@ -811,6 +825,55 @@ def _desktop_run(connection: sqlite3.Connection, run_id: str | None) -> sqlite3.
     ).fetchone()
 
 
+def _initialize_desktop_selection(connection: sqlite3.Connection, run_id: str) -> None:
+    setting = connection.execute(
+        "SELECT selection_initialized FROM desktop_run_settings WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    selection_count = int(
+        connection.execute(
+            "SELECT COUNT(*) FROM photo_selections WHERE run_id = ?", (run_id,)
+        ).fetchone()[0]
+    )
+    if setting is None:
+        connection.execute(
+            """
+            INSERT INTO desktop_run_settings (
+                run_id, target_count, selection_initialized, updated_at
+            ) VALUES (?, 24, ?, ?)
+            """,
+            (run_id, int(selection_count > 0), utc_now()),
+        )
+        initialized = selection_count > 0
+    else:
+        initialized = bool(setting["selection_initialized"])
+    if initialized:
+        return
+
+    if selection_count == 0:
+        connection.execute(
+            """
+            INSERT INTO photo_selections (run_id, image_id, selected_at, position)
+            SELECT pa.run_id, pa.image_id, ?,
+                   ROW_NUMBER() OVER (
+                       ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
+                   )
+            FROM photo_analysis AS pa
+            JOIN images AS i ON i.id = pa.image_id
+            WHERE pa.run_id = ? AND pa.selected = 1 AND i.missing = 0
+            """,
+            (utc_now(), run_id),
+        )
+    connection.execute(
+        """
+        UPDATE desktop_run_settings
+        SET selection_initialized = 1, updated_at = ?
+        WHERE run_id = ?
+        """,
+        (utc_now(), run_id),
+    )
+
+
 def _desktop_photo(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
     for key in ("is_blurry", "auto_selected", "favorite"):
@@ -836,6 +899,19 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
     for name, sql_type in additions.items():
         if name not in columns:
             connection.execute(f"ALTER TABLE faces ADD COLUMN {name} {sql_type}")
+    settings_columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(desktop_run_settings)")
+    }
+    if "selection_initialized" not in settings_columns:
+        connection.execute(
+            """
+            ALTER TABLE desktop_run_settings
+            ADD COLUMN selection_initialized INTEGER NOT NULL DEFAULT 0
+            """
+        )
+        connection.execute(
+            "UPDATE desktop_run_settings SET selection_initialized = 1"
+        )
 
 
 def _encode_embedding(embedding: list[float] | None) -> bytes | None:

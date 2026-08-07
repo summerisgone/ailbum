@@ -99,12 +99,12 @@ def test_database_v2_faces_are_migrated_without_losing_rows(tmp_path: Path) -> N
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         face_id = connection.execute("SELECT face_id FROM faces").fetchone()[0]
 
-    assert version == 4
+    assert version == 5
     assert face_id == "old-face"
     assert {"left_eye_state", "expression", "smile_probability"} <= columns
 
 
-def test_desktop_library_keeps_manual_selection_separate_from_analysis(tmp_path: Path) -> None:
+def test_desktop_library_initializes_manual_selection_from_analysis_once(tmp_path: Path) -> None:
     source = tmp_path / "photos"
     source.mkdir()
     _write_image_with_exif(source / "sample.jpg")
@@ -136,12 +136,14 @@ def test_desktop_library_keeps_manual_selection_separate_from_analysis(tmp_path:
     library = get_desktop_library(database)
     assert library["run"]["id"] == "run-1"  # type: ignore[index]
     assert library["photos"][0]["auto_selected"] is True  # type: ignore[index]
-    assert library["photos"][0]["favorite"] is False  # type: ignore[index]
+    assert library["photos"][0]["favorite"] is True  # type: ignore[index]
+    assert library["selected_count"] == 1
 
-    set_desktop_favorite(database, "run-1", image_id, True)
+    set_desktop_favorite(database, "run-1", image_id, False)
     set_desktop_target(database, "run-1", 36)
     updated = get_desktop_library(database)
 
-    assert updated["selected_count"] == 1
+    assert updated["selected_count"] == 0
     assert updated["target_count"] == 36
-    assert updated["photos"][0]["favorite"] is True  # type: ignore[index]
+    assert updated["photos"][0]["auto_selected"] is True  # type: ignore[index]
+    assert updated["photos"][0]["favorite"] is False  # type: ignore[index]
