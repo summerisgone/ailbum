@@ -46,7 +46,7 @@ def test_pipeline_writes_manifest_and_selects_best_of_duplicates(tmp_path: Path)
     assert photos[1]["selected"] is False  # type: ignore[index]
     assert (output / "selection.csv").exists()
     on_disk = json.loads((output / "analysis.json").read_text(encoding="utf-8"))
-    assert on_disk["schema_version"] == 2
+    assert on_disk["schema_version"] == 3
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT COUNT(*) FROM images").fetchone()[0] == 2
         assert connection.execute("SELECT COUNT(*) FROM analysis_runs").fetchone()[0] == 1

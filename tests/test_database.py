@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from ailbum.catalog import index_library
-from ailbum.database import database_summary, get_catalog_image, list_catalog_images
+from ailbum.database import connect, database_summary, get_catalog_image, list_catalog_images
 from ailbum.metadata import collect_image_metadata
 
 
@@ -60,3 +60,37 @@ def test_index_library_creates_queryable_catalog(tmp_path: Path) -> None:
         exif_json = connection.execute("SELECT exif_json FROM images").fetchone()[0]
     exif = json.loads(exif_json)
     assert exif["ifd0"]["Make"] == "Ailbum Camera"
+
+
+def test_database_v2_faces_are_migrated_without_losing_rows(tmp_path: Path) -> None:
+    database = tmp_path / "catalog.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE faces (
+                id INTEGER PRIMARY KEY, run_id TEXT, image_id INTEGER, face_id TEXT,
+                face_index INTEGER, bbox_x INTEGER, bbox_y INTEGER, bbox_width INTEGER,
+                bbox_height INTEGER, confidence REAL, person_cluster INTEGER,
+                person_id INTEGER, embedding BLOB, embedding_dim INTEGER,
+                embedding_model TEXT, UNIQUE (run_id, face_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO faces (
+                run_id, image_id, face_id, face_index, bbox_x, bbox_y,
+                bbox_width, bbox_height, confidence
+            ) VALUES ('old-run', 1, 'old-face', 1, 10, 20, 30, 40, 0.9)
+            """
+        )
+        connection.execute("PRAGMA user_version = 2")
+
+    with connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(faces)")}
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        face_id = connection.execute("SELECT face_id FROM faces").fetchone()[0]
+
+    assert version == 3
+    assert face_id == "old-face"
+    assert {"left_eye_state", "expression", "smile_probability"} <= columns

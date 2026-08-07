@@ -12,7 +12,13 @@ from ailbum.database import (
     save_analysis,
 )
 from ailbum.metadata import collect_image_metadata
-from ailbum.models import FaceRecord, PersonRecord, PhotoRecord
+from ailbum.models import (
+    ExpressionRecord,
+    EyeStateRecord,
+    FaceRecord,
+    PersonRecord,
+    PhotoRecord,
+)
 from ailbum.people import compose_person_faces
 
 
@@ -30,6 +36,19 @@ def _save_run(
         confidence=0.95,
         person_cluster=1,
         embedding=embedding,
+        eyes=EyeStateRecord(
+            left="open",
+            right="closed",
+            left_open_probability=0.91,
+            right_open_probability=0.12,
+            both_open=False,
+        ),
+        expression=ExpressionRecord(
+            label="happy",
+            confidence=0.84,
+            smile_probability=0.84,
+            scores={"happy": 0.84, "neutral": 0.16},
+        ),
     )
     photo = PhotoRecord(
         photo_id=f"{run_id}-photo",
@@ -89,6 +108,11 @@ def test_people_are_stable_across_runs_and_can_be_composed(tmp_path: Path) -> No
     details = name_person(database, first.person_id or 0, "Alice")
     assert details["name"] == "Alice"
     assert details["face_count"] == 2
+    assert details["faces"][0]["left_eye_state"] == "open"
+    assert details["faces"][0]["right_eye_state"] == "closed"
+    assert details["faces"][0]["both_eyes_open"] is False
+    assert details["faces"][0]["expression"] == "happy"
+    assert details["faces"][0]["expression_scores"]["happy"] == 0.84
 
     contact_sheet = tmp_path / "alice.jpg"
     result = compose_person_faces(database, first.person_id or 0, contact_sheet)

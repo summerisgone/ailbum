@@ -14,7 +14,7 @@ import numpy as np
 from ailbum.metadata import ImageMetadata
 from ailbum.models import PersonRecord, PhotoRecord
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -115,6 +115,15 @@ CREATE TABLE IF NOT EXISTS faces (
     embedding BLOB,
     embedding_dim INTEGER,
     embedding_model TEXT,
+    left_eye_state TEXT CHECK (left_eye_state IN ('open', 'closed') OR left_eye_state IS NULL),
+    right_eye_state TEXT CHECK (right_eye_state IN ('open', 'closed') OR right_eye_state IS NULL),
+    left_eye_open_probability REAL,
+    right_eye_open_probability REAL,
+    both_eyes_open INTEGER CHECK (both_eyes_open IN (0, 1) OR both_eyes_open IS NULL),
+    expression TEXT,
+    expression_confidence REAL,
+    smile_probability REAL,
+    expression_scores_json TEXT,
     UNIQUE (run_id, face_id)
 );
 
@@ -132,6 +141,7 @@ def connect(database: Path) -> Iterator[sqlite3.Connection]:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(SCHEMA)
+    _migrate_schema(connection)
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:
         yield connection
@@ -227,8 +237,11 @@ def save_analysis(
                     INSERT INTO faces (
                         run_id, image_id, face_id, face_index, bbox_x, bbox_y,
                         bbox_width, bbox_height, confidence, person_cluster,
-                        person_id, embedding, embedding_dim, embedding_model
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        person_id, embedding, embedding_dim, embedding_model,
+                        left_eye_state, right_eye_state, left_eye_open_probability,
+                        right_eye_open_probability, both_eyes_open, expression,
+                        expression_confidence, smile_probability, expression_scores_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         run_id,
@@ -245,6 +258,19 @@ def save_analysis(
                         _encode_embedding(face.embedding),
                         len(face.embedding) if face.embedding else None,
                         _embedding_model_for_person(people, face.person_cluster),
+                        face.eyes.left if face.eyes else None,
+                        face.eyes.right if face.eyes else None,
+                        face.eyes.left_open_probability if face.eyes else None,
+                        face.eyes.right_open_probability if face.eyes else None,
+                        (
+                            int(face.eyes.both_open)
+                            if face.eyes is not None and face.eyes.both_open is not None
+                            else None
+                        ),
+                        face.expression.label if face.expression else None,
+                        face.expression.confidence if face.expression else None,
+                        face.expression.smile_probability if face.expression else None,
+                        _json(face.expression.scores) if face.expression else None,
                     ),
                 )
                 face.database_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
@@ -430,13 +456,17 @@ def get_catalog_image(database: Path, image_id: int) -> dict[str, Any]:
             ).fetchall()
         ]
         result["faces"] = [
-            dict(item)
+            _face_result(item)
             for item in connection.execute(
                 """
                 SELECT f.id, f.run_id, f.image_id, f.face_id, f.face_index,
                        f.bbox_x, f.bbox_y, f.bbox_width, f.bbox_height,
                        f.confidence, f.person_cluster, f.person_id,
-                       f.embedding_dim, f.embedding_model,
+                       f.embedding_dim, f.embedding_model, f.left_eye_state,
+                       f.right_eye_state, f.left_eye_open_probability,
+                       f.right_eye_open_probability, f.both_eyes_open,
+                       f.expression, f.expression_confidence,
+                       f.smile_probability, f.expression_scores_json,
                        p.public_id AS person_public_id, p.name AS person_name
                 FROM faces AS f
                 LEFT JOIN people AS p ON p.id = f.person_id
@@ -491,12 +521,16 @@ def get_person(database: Path, person_id: int) -> dict[str, Any]:
             raise ValueError(f"Person id does not exist: {person_id}")
         result = dict(row)
         result["faces"] = [
-            dict(item)
+            _face_result(item)
             for item in connection.execute(
                 """
                 SELECT f.id, f.run_id, f.face_id, f.face_index, f.image_id,
                        f.bbox_x, f.bbox_y, f.bbox_width, f.bbox_height,
                        f.confidence, f.person_cluster, f.embedding_model,
+                       f.left_eye_state, f.right_eye_state,
+                       f.left_eye_open_probability, f.right_eye_open_probability,
+                       f.both_eyes_open, f.expression, f.expression_confidence,
+                       f.smile_probability, f.expression_scores_json,
                        i.path, i.taken_at, i.width AS image_width,
                        i.height AS image_height
                 FROM faces AS f
@@ -585,6 +619,33 @@ def _upsert_image(connection: sqlite3.Connection, item: ImageMetadata) -> int:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _face_result(row: sqlite3.Row) -> dict[str, Any]:
+    result = dict(row)
+    scores = result.pop("expression_scores_json", None)
+    result["expression_scores"] = json.loads(scores) if scores else None
+    if result.get("both_eyes_open") is not None:
+        result["both_eyes_open"] = bool(result["both_eyes_open"])
+    return result
+
+
+def _migrate_schema(connection: sqlite3.Connection) -> None:
+    columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(faces)")}
+    additions = {
+        "left_eye_state": "TEXT",
+        "right_eye_state": "TEXT",
+        "left_eye_open_probability": "REAL",
+        "right_eye_open_probability": "REAL",
+        "both_eyes_open": "INTEGER",
+        "expression": "TEXT",
+        "expression_confidence": "REAL",
+        "smile_probability": "REAL",
+        "expression_scores_json": "TEXT",
+    }
+    for name, sql_type in additions.items():
+        if name not in columns:
+            connection.execute(f"ALTER TABLE faces ADD COLUMN {name} {sql_type}")
 
 
 def _encode_embedding(embedding: list[float] | None) -> bytes | None:

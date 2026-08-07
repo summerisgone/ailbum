@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ailbum import __version__
 from ailbum.catalog import index_library
+from ailbum.compare import compare_images
 from ailbum.database import (
     database_summary,
     get_catalog_image,
@@ -36,8 +37,21 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--sharpness-threshold", type=float, default=100.0)
     analyze.add_argument("--photo-hash-distance", type=int, default=12)
     analyze.add_argument("--photo-hist-similarity", type=float, default=0.72)
+    analyze.add_argument("--photo-geometric-similarity", type=float, default=0.55)
+    analyze.add_argument(
+        "--no-geometric-similarity",
+        action="store_true",
+        help="отключить геометрическое сравнение SIFT/RANSAC",
+    )
+    analyze.add_argument("--geometric-max-features", type=int, default=4000)
     analyze.add_argument("--face-similarity", type=float, default=None)
     analyze.add_argument("--min-face-size", type=int, default=40)
+    analyze.add_argument(
+        "--min-attribute-face-size",
+        type=int,
+        default=64,
+        help="не классифицировать глаза и мимику у лиц меньше этого размера",
+    )
     analyze.add_argument("--face-backend", choices=("auto", "classic", "dnn"), default="auto")
     analyze.add_argument("--models-dir", type=Path, default=Path("models"))
     analyze.add_argument(
@@ -90,9 +104,21 @@ def build_parser() -> argparse.ArgumentParser:
     person_compose.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
 
     models = commands.add_parser(
-        "download-models", help="загрузить YuNet/SFace для более точной работы с лицами"
+        "download-models",
+        help="загрузить модели лиц, состояния глаз и выражений",
     )
     models.add_argument("--models-dir", type=Path, default=Path("models"))
+
+    compare = commands.add_parser(
+        "compare", help="сравнить сходство двух фотографий всеми метриками"
+    )
+    compare.add_argument("left", type=Path)
+    compare.add_argument("right", type=Path)
+    compare.add_argument("--photo-hash-distance", type=int, default=12)
+    compare.add_argument("--photo-hist-similarity", type=float, default=0.72)
+    compare.add_argument("--photo-geometric-similarity", type=float, default=0.55)
+    compare.add_argument("--geometric-max-features", type=int, default=4000)
+    compare.add_argument("--max-image-side", type=int, default=1600)
     return parser
 
 
@@ -102,6 +128,23 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "download-models":
             for path in download_models(args.models_dir):
                 print(path)
+            return
+        if args.command == "compare":
+            print(
+                json.dumps(
+                    compare_images(
+                        args.left,
+                        args.right,
+                        hash_distance=args.photo_hash_distance,
+                        histogram_threshold=args.photo_hist_similarity,
+                        geometric_threshold=args.photo_geometric_similarity,
+                        geometric_max_features=args.geometric_max_features,
+                        max_image_side=args.max_image_side,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
         if args.command == "index":
             summary = index_library(
@@ -179,8 +222,13 @@ def main(argv: list[str] | None = None) -> None:
             sharpness_threshold=args.sharpness_threshold,
             photo_hash_distance=args.photo_hash_distance,
             photo_hist_similarity=args.photo_hist_similarity,
+            photo_geometric_similarity=(
+                None if args.no_geometric_similarity else args.photo_geometric_similarity
+            ),
+            geometric_max_features=args.geometric_max_features,
             face_similarity=args.face_similarity,
             min_face_size=args.min_face_size,
+            min_attribute_face_size=args.min_attribute_face_size,
             face_backend=args.face_backend,
             models_dir=args.models_dir,
         )

@@ -8,7 +8,12 @@ from pathlib import Path
 
 import certifi
 
-from ailbum.cv.faces import SFACE_FILENAME, YUNET_FILENAME
+from ailbum.cv.faces import (
+    EXPRESSION_FILENAME,
+    EYE_STATE_FILENAME,
+    SFACE_FILENAME,
+    YUNET_FILENAME,
+)
 
 MODEL_SOURCES = {
     YUNET_FILENAME: (
@@ -24,6 +29,21 @@ MODEL_SOURCES = {
             "face_recognition_sface_2021dec.onnx"
         ),
         "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+    ),
+    EYE_STATE_FILENAME: (
+        (
+            "https://storage.openvinotoolkit.org/repositories/open_model_zoo/public/"
+            "2022.1/open-closed-eye-0001/open_closed_eye.onnx"
+        ),
+        "4daa100034482525a26c9afb9297c16580a531189e66e3d2b2ac7d32becfd593",
+    ),
+    EXPRESSION_FILENAME: (
+        (
+            "https://github.com/opencv/opencv_zoo/raw/main/models/"
+            "facial_expression_recognition/"
+            "facial_expression_recognition_mobilefacenet_2022july.onnx"
+        ),
+        "4f61307602fc089ce20488a31d4e4614e3c9753a7d6c41578c854858b183e1a9",
     ),
 }
 

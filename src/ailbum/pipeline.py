@@ -16,7 +16,14 @@ from ailbum.cv.similarity import PhotoFeatures, cluster_similar_photos, extract_
 from ailbum.database import new_run_id, save_analysis
 from ailbum.io import discover_images, load_image, relative_paths
 from ailbum.metadata import ImageMetadata, collect_image_metadata
-from ailbum.models import FaceRecord, PersonRecord, PhotoRecord, PipelineConfig
+from ailbum.models import (
+    ExpressionRecord,
+    EyeStateRecord,
+    FaceRecord,
+    PersonRecord,
+    PhotoRecord,
+    PipelineConfig,
+)
 
 Progress = Callable[[str], None]
 
@@ -38,7 +45,10 @@ def analyze_library(
     output.mkdir(parents=True, exist_ok=True)
 
     face_analyzer = FaceAnalyzer(
-        config.models_dir, backend=config.face_backend, min_face_size=config.min_face_size
+        config.models_dir,
+        backend=config.face_backend,
+        min_face_size=config.min_face_size,
+        min_attribute_face_size=config.min_attribute_face_size,
     )
     face_similarity = config.face_similarity
     if face_similarity is None:
@@ -68,14 +78,48 @@ def analyze_library(
                 quality=round(quality_score(sharpness, exposure), 4),
                 is_blurry=sharpness < config.sharpness_threshold,
             )
-            photo_features.append(extract_photo_features(image))
-            for face_index, (detection, embedding) in enumerate(face_analyzer.analyze(image), start=1):
+            photo_features.append(
+                extract_photo_features(
+                    image,
+                    geometric_max_features=config.geometric_max_features,
+                    geometric_max_image_side=config.max_image_side,
+                    include_geometric=config.photo_geometric_similarity is not None,
+                )
+            )
+            for face_index, analysis in enumerate(face_analyzer.analyze(image), start=1):
+                detection = analysis.detection
+                embedding = analysis.embedding
+                attributes = analysis.attributes
+                eyes = None
+                if attributes.left_eye is not None or attributes.right_eye is not None:
+                    eyes = EyeStateRecord(
+                        left=attributes.left_eye,
+                        right=attributes.right_eye,
+                        left_open_probability=attributes.left_eye_open_probability,
+                        right_open_probability=attributes.right_eye_open_probability,
+                        both_open=attributes.both_eyes_open,
+                    )
+                expression = None
+                if (
+                    attributes.expression is not None
+                    and attributes.expression_confidence is not None
+                    and attributes.expression_scores is not None
+                    and attributes.smile_probability is not None
+                ):
+                    expression = ExpressionRecord(
+                        label=attributes.expression,
+                        confidence=attributes.expression_confidence,
+                        smile_probability=attributes.smile_probability,
+                        scores=attributes.expression_scores,
+                    )
                 record.faces.append(
                     FaceRecord(
                         face_id=f"{record.photo_id}-face-{face_index:02d}",
                         bbox=detection.bbox,
                         confidence=round(detection.confidence, 4),
                         embedding=np.asarray(embedding, dtype=np.float32).reshape(-1).tolist(),
+                        eyes=eyes,
+                        expression=expression,
                     )
                 )
                 face_features.append(
@@ -105,6 +149,7 @@ def analyze_library(
         [photo_features[index] for index in valid_indices],  # type: ignore[misc]
         config.photo_hash_distance,
         config.photo_hist_similarity,
+        config.photo_geometric_similarity,
     )
     similar_groups: list[dict[str, object]] = []
     for cluster_id, local_group in enumerate(groups, start=1):
@@ -155,13 +200,14 @@ def analyze_library(
         )
 
     manifest: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "run_id": new_run_id(),
         "started_at": started_at,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": str(source.resolve()),
         "database": str(database.resolve()) if database else None,
         "face_backend": face_analyzer.backend,
+        "face_attribute_models": face_analyzer.attribute_models,
         "config": {
             **asdict(config),
             "face_similarity": face_similarity,
@@ -174,6 +220,12 @@ def analyze_library(
             "selected": sum(record.selected for record in records),
             "similar_groups": len(similar_groups),
             "faces": sum(len(record.faces) for record in records),
+            "faces_with_eye_state": sum(
+                face.eyes is not None for record in records for face in record.faces
+            ),
+            "faces_with_expression": sum(
+                face.expression is not None for record in records for face in record.faces
+            ),
             "people_groups": len(people),
         },
         "similar_groups": similar_groups,

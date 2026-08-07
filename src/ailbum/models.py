@@ -6,6 +6,23 @@ from typing import Any
 
 
 @dataclass(slots=True)
+class EyeStateRecord:
+    left: str | None = None
+    right: str | None = None
+    left_open_probability: float | None = None
+    right_open_probability: float | None = None
+    both_open: bool | None = None
+
+
+@dataclass(slots=True)
+class ExpressionRecord:
+    label: str
+    confidence: float
+    smile_probability: float
+    scores: dict[str, float]
+
+
+@dataclass(slots=True)
 class FaceRecord:
     face_id: str
     bbox: tuple[int, int, int, int]
@@ -14,6 +31,8 @@ class FaceRecord:
     person_id: int | None = None
     database_id: int | None = None
     embedding: list[float] | None = field(default=None, repr=False)
+    eyes: EyeStateRecord | None = None
+    expression: ExpressionRecord | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -70,8 +89,11 @@ class PipelineConfig:
     sharpness_threshold: float = 100.0
     photo_hash_distance: int = 12
     photo_hist_similarity: float = 0.72
+    photo_geometric_similarity: float | None = 0.55
+    geometric_max_features: int = 4000
     face_similarity: float | None = None
     min_face_size: int = 40
+    min_attribute_face_size: int = 64
     max_image_side: int = 1600
     face_backend: str = "auto"
     models_dir: Path = Path("models")
