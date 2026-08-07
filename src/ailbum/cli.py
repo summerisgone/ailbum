@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from ailbum import __version__
+from ailbum.catalog import index_library
+from ailbum.database import (
+    database_summary,
+    get_catalog_image,
+    get_person,
+    list_catalog_images,
+    list_people,
+    merge_people,
+    name_person,
+)
+from ailbum.model_download import download_models
+from ailbum.models import PipelineConfig
+from ailbum.people import compose_person_faces
+from ailbum.pipeline import analyze_library
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="ailbum", description="Многоступенчатый отбор фотографий для альбома"
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    analyze = commands.add_parser("analyze", help="проанализировать каталог фотографий")
+    analyze.add_argument("source", type=Path, help="файл или каталог с фотографиями")
+    analyze.add_argument("-o", "--output", type=Path, default=Path("output"))
+    analyze.add_argument("--no-recursive", action="store_true", help="не обходить подкаталоги")
+    analyze.add_argument("--sharpness-threshold", type=float, default=100.0)
+    analyze.add_argument("--photo-hash-distance", type=int, default=12)
+    analyze.add_argument("--photo-hist-similarity", type=float, default=0.72)
+    analyze.add_argument("--face-similarity", type=float, default=None)
+    analyze.add_argument("--min-face-size", type=int, default=40)
+    analyze.add_argument("--face-backend", choices=("auto", "classic", "dnn"), default="auto")
+    analyze.add_argument("--models-dir", type=Path, default=Path("models"))
+    analyze.add_argument(
+        "--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"), help="путь к SQLite"
+    )
+    analyze.add_argument("--quiet", action="store_true")
+
+    index = commands.add_parser("index", help="добавить изображения и метаданные в SQLite")
+    index.add_argument("source", type=Path, help="файл или каталог с фотографиями")
+    index.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    index.add_argument("--no-recursive", action="store_true", help="не обходить подкаталоги")
+    index.add_argument("--quiet", action="store_true")
+
+    database = commands.add_parser("db", help="просмотреть локальную базу изображений")
+    database_commands = database.add_subparsers(dest="database_command", required=True)
+    stats = database_commands.add_parser("stats", help="показать статистику базы")
+    stats.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    listing = database_commands.add_parser("list", help="показать изображения")
+    listing.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    listing.add_argument("--limit", type=int, default=100)
+    listing.add_argument("--json", action="store_true", help="вывести JSON")
+    show = database_commands.add_parser("show", help="показать все метаданные изображения")
+    show.add_argument("image_id", type=int)
+    show.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+
+    people = commands.add_parser("people", help="просматривать и объединять найденных людей")
+    people_commands = people.add_subparsers(dest="people_command", required=True)
+    people_list = people_commands.add_parser("list", help="показать людей")
+    people_list.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    people_list.add_argument("--limit", type=int, default=100)
+    people_list.add_argument("--json", action="store_true")
+    person_show = people_commands.add_parser("show", help="показать человека и его лица")
+    person_show.add_argument("person_id", type=int)
+    person_show.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    person_name = people_commands.add_parser("name", help="присвоить человеку имя")
+    person_name.add_argument("person_id", type=int)
+    person_name.add_argument("name")
+    person_name.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    person_merge = people_commands.add_parser("merge", help="объединить записи людей")
+    person_merge.add_argument("target_id", type=int, help="человек, которого нужно сохранить")
+    person_merge.add_argument("source_ids", type=int, nargs="+", help="люди для присоединения")
+    person_merge.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    person_compose = people_commands.add_parser(
+        "compose", help="создать контактный лист всех лиц человека"
+    )
+    person_compose.add_argument("person_id", type=int)
+    person_compose.add_argument("--output", type=Path)
+    person_compose.add_argument("--face-size", type=int, default=180)
+    person_compose.add_argument("--columns", type=int, default=5)
+    person_compose.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+
+    models = commands.add_parser(
+        "download-models", help="загрузить YuNet/SFace для более точной работы с лицами"
+    )
+    models.add_argument("--models-dir", type=Path, default=Path("models"))
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "download-models":
+            for path in download_models(args.models_dir):
+                print(path)
+            return
+        if args.command == "index":
+            summary = index_library(
+                args.source,
+                args.database,
+                recursive=not args.no_recursive,
+                progress=None if args.quiet else print,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+            print(f"База данных: {args.database.resolve()}")
+            return
+        if args.command == "db":
+            if args.database_command == "stats":
+                print(json.dumps(database_summary(args.database), ensure_ascii=False, indent=2))
+                return
+            if args.database_command == "show":
+                print(
+                    json.dumps(
+                        get_catalog_image(args.database, args.image_id),
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+                return
+            images = list_catalog_images(args.database, limit=args.limit)
+            if args.json:
+                print(json.dumps(images, ensure_ascii=False, indent=2))
+            else:
+                print("ID\tДата съёмки\tРазмер\tКамера\tПуть")
+                for image in images:
+                    dimensions = f"{image['width']}x{image['height']}"
+                    camera = " ".join(
+                        value
+                        for value in (image["camera_make"], image["camera_model"])
+                        if value
+                    )
+                    print(
+                        f"{image['id']}\t{image['taken_at'] or '-'}\t{dimensions}\t"
+                        f"{camera or '-'}\t{image['path']}"
+                    )
+            return
+        if args.command == "people":
+            if args.people_command == "list":
+                found_people = list_people(args.database, limit=args.limit)
+                if args.json:
+                    print(json.dumps(found_people, ensure_ascii=False, indent=2))
+                else:
+                    print("ID\tИмя\tЛица\tФото\tМодель")
+                    for person in found_people:
+                        print(
+                            f"{person['id']}\t{person['name'] or '-'}\t"
+                            f"{person['face_count']}\t{person['photo_count']}\t"
+                            f"{person['embedding_model']}"
+                        )
+                return
+            if args.people_command == "show":
+                result = get_person(args.database, args.person_id)
+            elif args.people_command == "name":
+                result = name_person(args.database, args.person_id, args.name)
+            elif args.people_command == "merge":
+                result = merge_people(args.database, args.target_id, args.source_ids)
+            else:
+                output = args.output or Path("output/people") / f"person-{args.person_id}.jpg"
+                result = compose_person_faces(
+                    args.database,
+                    args.person_id,
+                    output,
+                    face_size=args.face_size,
+                    columns=args.columns,
+                )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+
+        config = PipelineConfig(
+            sharpness_threshold=args.sharpness_threshold,
+            photo_hash_distance=args.photo_hash_distance,
+            photo_hist_similarity=args.photo_hist_similarity,
+            face_similarity=args.face_similarity,
+            min_face_size=args.min_face_size,
+            face_backend=args.face_backend,
+            models_dir=args.models_dir,
+        )
+        manifest = analyze_library(
+            args.source,
+            args.output,
+            config,
+            recursive=not args.no_recursive,
+            progress=None if args.quiet else print,
+            database=args.database,
+        )
+        summary = manifest["summary"]
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        print(f"Результаты: {(args.output / 'analysis.json').resolve()}")
+        print(f"База данных: {args.database.resolve()}")
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"Ошибка: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
+
+
+if __name__ == "__main__":
+    main()

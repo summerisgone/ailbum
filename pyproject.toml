@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ailbum"
+version = "0.2.0"
+description = "Local, multi-stage photo selection pipeline for albums"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ailbum contributors" }]
+dependencies = [
+  "certifi>=2024.8.30",
+  "numpy>=1.26,<3",
+  "opencv-contrib-python-headless>=4.10,<5",
+  "Pillow>=10,<13",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+ailbum = "ailbum.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ailbum"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
