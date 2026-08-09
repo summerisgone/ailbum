@@ -189,7 +189,25 @@ button { color: inherit; }
 .story-header.highlighted::after { background: #edf3c6; box-shadow: inset 3px 0 #8b9943; }
 .photo-row { display: grid; gap: 12px; padding: 0 24px 13px 28px; }
 
-.photo-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-self: stretch; border-radius: 12px; outline: 0; cursor: zoom-in; }
+.photo-card { min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; align-self: stretch; border-radius: 12px; outline: 0; cursor: zoom-in; }
+.photo-card.stacked { cursor: pointer; }
+.photo-card.stacked::before,
+.photo-card.stacked::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  bottom: 43px;
+  left: 7px;
+  height: calc(100% - 47px);
+  border: 1px solid #afb4ab;
+  border-radius: 12px;
+  background: #d9dbd5;
+  box-shadow: 0 3px 9px rgba(38, 42, 38, .09);
+}
+.photo-card.stacked::before { transform: translate(5px, -5px) rotate(1.2deg); }
+.photo-card.stacked::after { transform: translate(-4px, -3px) rotate(-.8deg); }
+.photo-card.stacked > * { position: relative; z-index: 1; }
+.photo-card.series-expanded .photo-frame { box-shadow: inset 0 0 0 1px rgba(101, 116, 44, .25); }
 .photo-card:focus-visible .photo-frame { box-shadow: 0 0 0 3px #879344; }
 .photo-frame { position: relative; min-height: 0; flex: 1; overflow: hidden; border: 2px solid transparent; border-radius: 12px; background: #ddded9; transition: border-color .14s, box-shadow .14s, transform .14s; }
 .photo-card:hover .photo-frame { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(40, 43, 40, .12); }
@@ -200,6 +218,10 @@ button { color: inherit; }
 .photo-frame img { width: 100%; height: 100%; display: block; object-fit: cover; background: #dcddd8; }
 .photo-frame.portrait { background: #303431; }
 .photo-frame.portrait img { object-fit: contain; background: #303431; }
+.series-count,
+.series-collapse { position: absolute; top: 9px; left: 48px; z-index: 2; height: 27px; display: flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 8px; color: #f8f9f8; background: rgba(28, 32, 29, .78); box-shadow: 0 2px 8px rgba(0,0,0,.14); backdrop-filter: blur(8px); font-size: 10px; font-weight: 700; }
+.series-collapse { border: 1px solid rgba(255,255,255,.3); cursor: pointer; }
+.series-collapse:hover { color: #273013; background: #e7f665; border-color: #e7f665; }
 .photo-topline { position: absolute; top: 8px; right: 8px; left: 8px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 .score { min-width: 31px; height: 25px; display: grid; place-items: center; padding: 0 7px; color: white; border-radius: 8px; background: rgba(30, 33, 31, .82); box-shadow: 0 2px 8px rgba(0, 0, 0, .14); backdrop-filter: blur(8px); font-size: 11px; font-weight: 700; }
 .score-high { color: #253116; background: rgba(225, 239, 114, .92); }

@@ -55,7 +55,23 @@ const TIME_FORMAT = new Intl.DateTimeFormat("ru-RU", {
 
 type GridRow =
   | { kind: "header"; key: string; story: Story; count: number }
-  | { kind: "photos"; key: string; photos: Photo[] };
+  | { kind: "photos"; key: string; items: PhotoGridItem[] };
+
+type PhotoGridItem =
+  | { kind: "photo"; key: string; photo: Photo; series?: ExpandedSeries }
+  | {
+      kind: "stack";
+      key: string;
+      seriesKey: string;
+      photos: Photo[];
+      representative: Photo;
+    };
+
+type ExpandedSeries = {
+  key: string;
+  size: number;
+  isFirst: boolean;
+};
 
 type StoryJump = { storyId: number; token: number };
 
@@ -100,6 +116,14 @@ function isPortraitPhoto(photo: Photo) {
   const displayWidth = swapsAxes ? photo.height : photo.width;
   const displayHeight = swapsAxes ? photo.width : photo.height;
   return displayHeight > displayWidth;
+}
+
+function stackRepresentative(photos: Photo[]) {
+  return [...photos].sort((left, right) => {
+    if (left.favorite !== right.favorite) return left.favorite ? -1 : 1;
+    if (left.auto_selected !== right.auto_selected) return left.auto_selected ? -1 : 1;
+    return (right.quality ?? -1) - (left.quality ?? -1);
+  })[0];
 }
 
 function App() {
@@ -345,6 +369,7 @@ function App() {
               </div>
             </div>
             <VirtualPhotoGrid
+              key={library.run.id}
               photos={photos}
               stories={library.stories}
               pending={pending}
@@ -853,6 +878,7 @@ function VirtualPhotoGrid({
   const { width, height } = useElementSize(scrollerRef);
   const [scrollTop, setScrollTop] = useState(0);
   const [highlightedStory, setHighlightedStory] = useState<number | null>(null);
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(() => new Set());
   const columns = columnCount(width);
   const cardWidth = Math.max(150, (width - 48 - (columns - 1) * 12) / columns);
   const photoRowHeight = Math.round(cardWidth * 0.68 + 46);
@@ -878,16 +904,61 @@ function VirtualPhotoGrid({
         naming_model: null,
       };
       result.push({ kind: "header", key: `header-${storyId}`, story, count: items.length });
-      for (let index = 0; index < items.length; index += columns) {
+
+      const series = new Map<number, Photo[]>();
+      for (const photo of items) {
+        if (photo.similar_cluster == null) continue;
+        const members = series.get(photo.similar_cluster);
+        if (members) members.push(photo);
+        else series.set(photo.similar_cluster, [photo]);
+      }
+
+      const gridItems: PhotoGridItem[] = [];
+      const emittedSeries = new Set<number>();
+      for (const photo of items) {
+        const cluster = photo.similar_cluster;
+        const members = cluster == null ? undefined : series.get(cluster);
+        if (cluster == null || !members || members.length < 2) {
+          gridItems.push({ kind: "photo", key: `photo-${photo.id}`, photo });
+          continue;
+        }
+        if (emittedSeries.has(cluster)) continue;
+        emittedSeries.add(cluster);
+        const seriesKey = `${storyId}:${cluster}`;
+        if (expandedSeries.has(seriesKey)) {
+          members.forEach((member, memberIndex) => {
+            gridItems.push({
+              kind: "photo",
+              key: `photo-${member.id}`,
+              photo: member,
+              series: {
+                key: seriesKey,
+                size: members.length,
+                isFirst: memberIndex === 0,
+              },
+            });
+          });
+        } else {
+          gridItems.push({
+            kind: "stack",
+            key: `stack-${seriesKey}`,
+            seriesKey,
+            photos: members,
+            representative: stackRepresentative(members),
+          });
+        }
+      }
+
+      for (let index = 0; index < gridItems.length; index += columns) {
         result.push({
           kind: "photos",
           key: `${storyId}-${index}`,
-          photos: items.slice(index, index + columns),
+          items: gridItems.slice(index, index + columns),
         });
       }
     }
     return result;
-  }, [photos, stories, columns]);
+  }, [photos, stories, columns, expandedSeries]);
 
   const layout = useMemo(() => {
     const offsets: number[] = [];
@@ -976,13 +1047,34 @@ function VirtualPhotoGrid({
               style={{ ...style, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
               key={row.key}
             >
-              {row.photos.map((photo) => (
+              {row.items.map((item) => item.kind === "stack" ? (
                 <PhotoCard
-                  photo={photo}
-                  pending={pending.has(photo.id)}
+                  photo={item.representative}
+                  pending={pending.has(item.representative.id)}
+                  onToggle={onToggle}
+                  onOpen={() => setExpandedSeries((current) => {
+                    const next = new Set(current);
+                    next.add(item.seriesKey);
+                    return next;
+                  })}
+                  stackSize={item.photos.length}
+                  key={item.key}
+                />
+              ) : (
+                <PhotoCard
+                  photo={item.photo}
+                  pending={pending.has(item.photo.id)}
                   onToggle={onToggle}
                   onOpen={onOpen}
-                  key={photo.id}
+                  expandedSeries={item.series}
+                  onCollapseSeries={item.series?.isFirst ? () => {
+                    setExpandedSeries((current) => {
+                      const next = new Set(current);
+                      next.delete(item.series!.key);
+                      return next;
+                    });
+                  } : undefined}
+                  key={item.key}
                 />
               ))}
             </div>
@@ -998,11 +1090,17 @@ const PhotoCard = memo(function PhotoCard({
   pending,
   onToggle,
   onOpen,
+  stackSize,
+  expandedSeries,
+  onCollapseSeries,
 }: {
   photo: Photo;
   pending: boolean;
   onToggle(photo: Photo, favorite: boolean): void;
   onOpen(photo: Photo): void;
+  stackSize?: number;
+  expandedSeries?: ExpandedSeries;
+  onCollapseSeries?(): void;
 }) {
   const score = scoreOf(photo);
   const aesthetic =
@@ -1010,7 +1108,7 @@ const PhotoCard = memo(function PhotoCard({
   const takenAt = photo.taken_at ? new Date(photo.taken_at) : null;
   return (
     <article
-      className={`photo-card${photo.favorite ? " selected" : ""}`}
+      className={`photo-card${photo.favorite ? " selected" : ""}${stackSize ? " stacked" : ""}${expandedSeries ? " series-expanded" : ""}`}
       onClick={() => onOpen(photo)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -1020,10 +1118,28 @@ const PhotoCard = memo(function PhotoCard({
       }}
       role="button"
       tabIndex={0}
-      aria-label={`Открыть ${photo.file_name}`}
+      aria-label={stackSize ? `Раскрыть серию из ${stackSize} фотографий` : `Открыть ${photo.file_name}`}
     >
       <div className={`photo-frame${isPortraitPhoto(photo) ? " portrait" : ""}`}>
         <img src={window.ailbum.mediaUrl(photo.id)} alt={photo.file_name} loading="lazy" decoding="async" />
+        {stackSize && (
+          <span className="series-count" title={`Серия из ${stackSize} похожих фотографий`}>
+            <Layers3 size={14} />{stackSize}
+          </span>
+        )}
+        {onCollapseSeries && (
+          <button
+            className="series-collapse"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCollapseSeries();
+            }}
+            aria-label={`Свернуть серию из ${expandedSeries?.size ?? 0} фотографий`}
+            title="Свернуть серию"
+          >
+            <Layers3 size={13} /> Свернуть
+          </button>
+        )}
         <div className="photo-topline">
           <span
             className={`score score-${score == null ? "none" : score >= 75 ? "high" : score >= 55 ? "mid" : "low"}`}
@@ -1059,7 +1175,7 @@ const PhotoCard = memo(function PhotoCard({
         </div>
       </div>
       <div className="photo-meta">
-        <strong title={photo.file_name}>{photo.file_name}</strong>
+        <strong title={photo.file_name}>{stackSize ? `Серия · ${photo.file_name}` : photo.file_name}</strong>
         <span>{takenAt && !Number.isNaN(takenAt.valueOf()) ? TIME_FORMAT.format(takenAt) : "Время неизвестно"}</span>
       </div>
     </article>

@@ -220,6 +220,11 @@ function createWindow() {
             'Array.from(document.querySelectorAll(".thumb-jump")).at(-1)?.click()',
           );
           await new Promise((resolve) => setTimeout(resolve, 1800));
+        } else if (process.env.AILBUM_SCREENSHOT_SECTION === "series") {
+          await window.webContents.executeJavaScript(
+            'document.querySelector(".photo-card.stacked")?.click()',
+          );
+          await new Promise((resolve) => setTimeout(resolve, 1200));
         }
         const image = await window.webContents.capturePage();
         writeFileSync(path.resolve(process.env.AILBUM_SCREENSHOT), image.toPNG());
