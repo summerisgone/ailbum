@@ -5,11 +5,15 @@ from pathlib import Path
 from PIL import Image
 
 from ailbum.database import (
+    create_person_from_face,
+    get_desktop_faces,
+    get_desktop_people,
     get_person,
     list_people,
     merge_people,
     name_person,
     save_analysis,
+    set_face_person,
 )
 from ailbum.metadata import collect_image_metadata
 from ailbum.models import (
@@ -138,3 +142,31 @@ def test_people_can_be_merged(tmp_path: Path) -> None:
     assert len(list_people(database)) == 1
     assert merged["face_count"] == 2
     assert get_person(database, target.person_id or 0)["id"] == target.person_id
+
+
+def test_desktop_editor_can_reassign_and_create_people(tmp_path: Path) -> None:
+    source = tmp_path / "photos"
+    source.mkdir()
+    image_path = source / "portrait.jpg"
+    Image.new("RGB", (240, 180), (80, 120, 160)).save(image_path)
+    database = tmp_path / "catalog.sqlite3"
+
+    first = _save_run(database, source, image_path, "run-1", [1.0, 0.0], (10, 10, 60, 60))
+    second = _save_run(database, source, image_path, "run-2", [0.0, 1.0], (120, 30, 60, 60))
+    first_id = first.person_id or 0
+    second_id = second.person_id or 0
+    face_id = int(get_desktop_faces(database, first_id)["faces"][0]["id"])
+
+    set_face_person(database, face_id, second_id)
+    people = get_desktop_people(database)
+    counts = {person["id"]: person["face_count"] for person in people["people"]}
+    assert counts[first_id] == 0
+    assert counts[second_id] == 2
+
+    set_face_person(database, face_id, None)
+    assert get_desktop_people(database)["unassigned_count"] == 1
+    created = create_person_from_face(database, face_id, "New person")
+
+    assert created["id"] not in {first_id, second_id}
+    assert created["name"] == "New person"
+    assert get_desktop_people(database)["unassigned_count"] == 0

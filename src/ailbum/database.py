@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,9 +14,11 @@ from typing import Any
 import numpy as np
 
 from ailbum.metadata import ImageMetadata
-from ailbum.models import PersonRecord, PhotoRecord
+from ailbum.models import PersonRecord, PhotoRecord, StoryRecord
+from ailbum.stories import STORY_ALGORITHM_VERSION, StoryPhoto, detect_stories
+from ailbum.story_naming import StoryNamer
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -74,8 +78,20 @@ CREATE TABLE IF NOT EXISTS photo_analysis (
     sharpness REAL NOT NULL,
     exposure REAL NOT NULL,
     quality REAL NOT NULL,
+    aesthetic_score REAL,
+    composition_score REAL,
+    rule_of_thirds REAL,
+    frame_occupancy REAL,
+    negative_space REAL,
+    crop_risk REAL,
+    color_balance REAL,
+    color_harmony REAL,
+    main_subject_json TEXT,
+    scene_tags_json TEXT NOT NULL DEFAULT '[]',
+    object_tags_json TEXT NOT NULL DEFAULT '[]',
     is_blurry INTEGER NOT NULL CHECK (is_blurry IN (0, 1)),
     similar_cluster INTEGER,
+    story_id INTEGER,
     selected INTEGER NOT NULL CHECK (selected IN (0, 1)),
     error TEXT,
     PRIMARY KEY (run_id, image_id),
@@ -84,6 +100,22 @@ CREATE TABLE IF NOT EXISTS photo_analysis (
 
 CREATE INDEX IF NOT EXISTS idx_photo_analysis_selected ON photo_analysis(run_id, selected);
 CREATE INDEX IF NOT EXISTS idx_photo_analysis_similar ON photo_analysis(run_id, similar_cluster);
+
+CREATE TABLE IF NOT EXISTS stories (
+    run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
+    story_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    started_at TEXT,
+    ended_at TEXT,
+    representative_image_id INTEGER REFERENCES images(id) ON DELETE SET NULL,
+    scene_tags_json TEXT NOT NULL DEFAULT '[]',
+    object_tags_json TEXT NOT NULL DEFAULT '[]',
+    naming_model TEXT,
+    algorithm_version INTEGER NOT NULL DEFAULT 2,
+    PRIMARY KEY (run_id, story_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stories_time ON stories(run_id, started_at);
 
 CREATE TABLE IF NOT EXISTS people (
     id INTEGER PRIMARY KEY,
@@ -200,6 +232,7 @@ def save_analysis(
     people: list[PersonRecord],
     metadata: list[ImageMetadata],
     face_similarity: float,
+    stories: list[StoryRecord] | None = None,
 ) -> str:
     run_id = str(manifest["run_id"])
     with connect(database) as connection:
@@ -233,8 +266,12 @@ def save_analysis(
                 """
                 INSERT INTO photo_analysis (
                     run_id, image_id, photo_id, sharpness, exposure, quality,
-                    is_blurry, similar_cluster, selected, error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    aesthetic_score, composition_score, rule_of_thirds,
+                    frame_occupancy, negative_space, crop_risk, color_balance,
+                    color_harmony, main_subject_json, scene_tags_json,
+                    object_tags_json, is_blurry, similar_cluster, story_id,
+                    selected, error
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -243,8 +280,49 @@ def save_analysis(
                     record.sharpness,
                     record.exposure,
                     record.quality,
+                    (
+                        record.semantics.aesthetic_score
+                        if record.semantics is not None
+                        else None
+                    ),
+                    record.composition.score if record.composition is not None else None,
+                    (
+                        record.composition.rule_of_thirds
+                        if record.composition is not None
+                        else None
+                    ),
+                    (
+                        record.composition.frame_occupancy
+                        if record.composition is not None
+                        else None
+                    ),
+                    (
+                        record.composition.negative_space
+                        if record.composition is not None
+                        else None
+                    ),
+                    record.composition.crop_risk if record.composition is not None else None,
+                    record.color.balance if record.color is not None else None,
+                    record.color.harmony if record.color is not None else None,
+                    (
+                        _json(asdict(record.composition.main_subject))
+                        if record.composition is not None
+                        and record.composition.main_subject is not None
+                        else None
+                    ),
+                    _json(
+                        [asdict(tag) for tag in record.semantics.scenes]
+                        if record.semantics is not None
+                        else []
+                    ),
+                    _json(
+                        [asdict(tag) for tag in record.semantics.objects]
+                        if record.semantics is not None
+                        else []
+                    ),
                     int(record.is_blurry),
                     record.similar_cluster,
+                    record.story_id,
                     int(record.selected),
                     record.error,
                 ),
@@ -304,6 +382,10 @@ def save_analysis(
                         """,
                         (face.person_id, image_id, x, y, width, height),
                     )
+        photo_image_ids = {
+            record.photo_id: image_ids[record.path] for record in records
+        }
+        _store_stories(connection, run_id, stories or [], photo_image_ids)
         for person in people:
             if person.person_id is not None:
                 _refresh_person_centroid(connection, person.person_id)
@@ -369,6 +451,154 @@ def _assign_people(
                 face.person_id = cluster_people[face.person_cluster]
 
 
+def _store_stories(
+    connection: sqlite3.Connection,
+    run_id: str,
+    stories: list[StoryRecord],
+    photo_image_ids: dict[str, int],
+) -> None:
+    connection.execute("DELETE FROM stories WHERE run_id = ?", (run_id,))
+    for story in stories:
+        connection.execute(
+            """
+            INSERT INTO stories (
+                run_id, story_id, title, started_at, ended_at,
+                representative_image_id, scene_tags_json, object_tags_json,
+                naming_model, algorithm_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                story.story_id,
+                story.title,
+                story.started_at,
+                story.ended_at,
+                photo_image_ids.get(story.representative_photo_id),
+                _json(story.scene_labels),
+                _json(story.object_labels),
+                story.naming_model,
+                STORY_ALGORITHM_VERSION,
+            ),
+        )
+
+
+def _ensure_stories(connection: sqlite3.Connection, run_id: str) -> None:
+    counts = connection.execute(
+        """
+        SELECT COUNT(*) AS photos,
+               SUM(CASE WHEN story_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned
+        FROM photo_analysis
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+    story_state = connection.execute(
+        """
+        SELECT COUNT(*) AS stories,
+               MIN(COALESCE(algorithm_version, 1)) AS algorithm_version
+        FROM stories WHERE run_id = ?
+        """,
+        (run_id,),
+    ).fetchone()
+    story_count = int(story_state["stories"] or 0)
+    if int(counts["photos"] or 0) == 0:
+        return
+    if (
+        story_count > 0
+        and int(counts["assigned"] or 0) == int(counts["photos"])
+        and int(story_state["algorithm_version"] or 1) >= STORY_ALGORITHM_VERSION
+    ):
+        return
+
+    rows = connection.execute(
+        """
+        SELECT pa.photo_id, pa.image_id, pa.quality, pa.is_blurry,
+               pa.scene_tags_json, pa.object_tags_json,
+               COALESCE(i.taken_at, i.modified_at) AS taken_at,
+               i.gps_latitude, i.gps_longitude, i.path
+        FROM photo_analysis AS pa
+        JOIN images AS i ON i.id = pa.image_id
+        WHERE pa.run_id = ? AND i.missing = 0
+        ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
+        """,
+        (run_id,),
+    ).fetchall()
+    people_by_image: defaultdict[int, set[str]] = defaultdict(set)
+    for face in connection.execute(
+        """
+        SELECT image_id, person_id, person_cluster
+        FROM faces
+        WHERE run_id = ?
+        """,
+        (run_id,),
+    ):
+        identity = (
+            f"person:{face['person_id']}"
+            if face["person_id"] is not None
+            else f"cluster:{face['person_cluster']}"
+        )
+        if face["person_id"] is not None or face["person_cluster"] is not None:
+            people_by_image[int(face["image_id"])].add(identity)
+
+    config_row = connection.execute(
+        "SELECT config_json FROM analysis_runs WHERE id = ?", (run_id,)
+    ).fetchone()
+    config = json.loads(config_row["config_json"]) if config_row else {}
+    story_photos = [
+        StoryPhoto(
+            photo_id=str(row["photo_id"]),
+            taken_at=row["taken_at"],
+            gps_latitude=row["gps_latitude"],
+            gps_longitude=row["gps_longitude"],
+            people=frozenset(people_by_image[int(row["image_id"])]),
+            scenes=_tag_pairs(row["scene_tags_json"]),
+            objects=_tag_pairs(row["object_tags_json"]),
+            quality=float(row["quality"] or 0),
+            is_blurry=bool(row["is_blurry"]),
+        )
+        for row in rows
+    ]
+    stories = detect_stories(
+        story_photos,
+        gap_minutes=int(config.get("story_gap_minutes", 120)),
+        continuity_minutes=int(config.get("story_continuity_minutes", 360)),
+        max_duration_hours=int(config.get("story_max_duration_hours", 12)),
+        semantic_break_minutes=int(config.get("story_semantic_break_minutes", 30)),
+    )
+    story_namer = StoryNamer(
+        backend=str(config.get("story_naming_backend", "auto")),
+        base_url=str(config.get("lmstudio_url", "http://127.0.0.1:1234/v1")),
+        model=str(config.get("lmstudio_model", "qwen/qwen3-vl-2b")),
+        max_images=int(config.get("story_vlm_images", 4)),
+        timeout=float(config.get("story_vlm_timeout", 90.0)),
+    )
+    stories = story_namer.refine(
+        stories,
+        {str(row["photo_id"]): str(row["path"]) for row in rows},
+    )
+    for story in stories:
+        connection.executemany(
+            "UPDATE photo_analysis SET story_id = ? WHERE run_id = ? AND photo_id = ?",
+            [(story.story_id, run_id, photo_id) for photo_id in story.photo_ids],
+        )
+    _store_stories(
+        connection,
+        run_id,
+        stories,
+        {str(row["photo_id"]): int(row["image_id"]) for row in rows},
+    )
+
+
+def _tag_pairs(value: str | None) -> tuple[tuple[str, float], ...]:
+    result: list[tuple[str, float]] = []
+    for item in json.loads(value or "[]"):
+        if isinstance(item, dict) and item.get("label"):
+            result.append((str(item["label"]), float(item.get("confidence", 0))))
+        elif isinstance(item, str):
+            result.append((item, 1.0))
+    return tuple(result)
+
+
 def _refresh_person_centroid(connection: sqlite3.Connection, person_id: int) -> None:
     person = connection.execute(
         "SELECT embedding_model FROM people WHERE id = ?", (person_id,)
@@ -421,6 +651,7 @@ def database_summary(database: Path) -> dict[str, Any]:
             "SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL"
         ).fetchone()[0]
         people = connection.execute("SELECT COUNT(*) FROM people").fetchone()[0]
+        stories = connection.execute("SELECT COUNT(*) FROM stories").fetchone()[0]
     count_fields = ("images", "available", "unique_files", "bytes", "with_gps", "with_taken_at")
     result = {key: int(image_counts[key] or 0) for key in count_fields}
     result.update(
@@ -429,6 +660,7 @@ def database_summary(database: Path) -> dict[str, Any]:
             "faces": int(faces),
             "linked_faces": int(linked_faces),
             "people": int(people),
+            "stories": int(stories),
         }
     )
     return result
@@ -462,7 +694,7 @@ def get_catalog_image(database: Path, image_id: int) -> dict[str, Any]:
         result["exif"] = json.loads(result.pop("exif_json"))
         result["container_metadata"] = json.loads(result.pop("container_metadata_json"))
         result["analysis_history"] = [
-            dict(item)
+            _analysis_result(item)
             for item in connection.execute(
                 """
                 SELECT pa.*, ar.started_at, ar.completed_at, ar.face_backend
@@ -600,6 +832,147 @@ def merge_people(database: Path, target_id: int, source_ids: list[int]) -> dict[
     return get_person(database, target_id)
 
 
+def get_desktop_people(database: Path) -> dict[str, Any]:
+    """Return people summaries for the desktop face-assignment editor."""
+    if not database.exists():
+        raise FileNotFoundError(f"Database does not exist: {database}")
+    with connect(database) as connection:
+        people = [
+            dict(row)
+            for row in connection.execute(
+                """
+                SELECT p.id, p.public_id, p.name, p.embedding_model,
+                       COUNT(f.id) AS face_count,
+                       COUNT(DISTINCT f.image_id) AS photo_count,
+                       MIN(f.id) AS cover_face_id
+                FROM people AS p
+                LEFT JOIN faces AS f ON f.person_id = p.id
+                GROUP BY p.id
+                ORDER BY (COUNT(f.id) = 0), photo_count DESC, face_count DESC, p.id
+                """
+            ).fetchall()
+        ]
+        unassigned_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM faces WHERE person_id IS NULL"
+            ).fetchone()[0]
+        )
+        total_faces = int(connection.execute("SELECT COUNT(*) FROM faces").fetchone()[0])
+    return {
+        "database": str(database.resolve()),
+        "people": people,
+        "unassigned_count": unassigned_count,
+        "total_faces": total_faces,
+    }
+
+
+def get_desktop_faces(database: Path, person_id: int | None) -> dict[str, Any]:
+    """Return face observations belonging to one person, or currently unassigned."""
+    if not database.exists():
+        raise FileNotFoundError(f"Database does not exist: {database}")
+    with connect(database) as connection:
+        if person_id is not None:
+            person = connection.execute(
+                "SELECT id, public_id, name, embedding_model FROM people WHERE id = ?",
+                (person_id,),
+            ).fetchone()
+            if person is None:
+                raise ValueError(f"Person id does not exist: {person_id}")
+            owner: dict[str, Any] | None = dict(person)
+            predicate = "f.person_id = ?"
+            parameters: tuple[object, ...] = (person_id,)
+        else:
+            owner = None
+            predicate = "f.person_id IS NULL"
+            parameters = ()
+        faces = [
+            _face_result(row)
+            for row in connection.execute(
+                f"""
+                SELECT f.id, f.run_id, f.face_id, f.face_index, f.image_id,
+                       f.bbox_x, f.bbox_y, f.bbox_width, f.bbox_height,
+                       f.confidence, f.person_id, f.embedding_model,
+                       f.left_eye_state, f.right_eye_state, f.both_eyes_open,
+                       f.expression, f.expression_confidence, f.smile_probability,
+                       f.expression_scores_json, i.path, i.file_name, i.taken_at,
+                       i.orientation
+                FROM faces AS f
+                JOIN images AS i ON i.id = f.image_id
+                WHERE {predicate}
+                ORDER BY COALESCE(i.taken_at, i.modified_at) DESC, i.path, f.face_index
+                """,
+                parameters,
+            ).fetchall()
+        ]
+    return {"person": owner, "faces": faces}
+
+
+def set_face_person(database: Path, face_id: int, person_id: int | None) -> dict[str, Any]:
+    """Manually assign one face observation to a person, or detach it."""
+    with connect(database) as connection:
+        face = connection.execute(
+            "SELECT id, person_id, embedding_model FROM faces WHERE id = ?", (face_id,)
+        ).fetchone()
+        if face is None:
+            raise ValueError(f"Face id does not exist: {face_id}")
+        old_person_id = int(face["person_id"]) if face["person_id"] is not None else None
+        if person_id is not None:
+            person = connection.execute(
+                "SELECT id, embedding_model FROM people WHERE id = ?", (person_id,)
+            ).fetchone()
+            if person is None:
+                raise ValueError(f"Person id does not exist: {person_id}")
+            if face["embedding_model"] != person["embedding_model"]:
+                raise ValueError("Нельзя связать лицо и человека из разных моделей признаков")
+        connection.execute("UPDATE faces SET person_id = ? WHERE id = ?", (person_id, face_id))
+        for affected_id in {old_person_id, person_id} - {None}:
+            _refresh_person_centroid(connection, int(affected_id))
+    return {"face_id": face_id, "person_id": person_id}
+
+
+def create_person_from_face(
+    database: Path, face_id: int, name: str | None = None
+) -> dict[str, Any]:
+    """Create a manual person identity using one face as its initial centroid."""
+    normalized = name.strip() if name else None
+    with connect(database) as connection:
+        face = connection.execute(
+            """
+            SELECT id, person_id, embedding, embedding_dim, embedding_model
+            FROM faces WHERE id = ?
+            """,
+            (face_id,),
+        ).fetchone()
+        if face is None:
+            raise ValueError(f"Face id does not exist: {face_id}")
+        if face["embedding"] is None or face["embedding_dim"] is None or not face["embedding_model"]:
+            raise ValueError("У лица нет признаков, необходимых для создания человека")
+        old_person_id = int(face["person_id"]) if face["person_id"] is not None else None
+        now = utc_now()
+        cursor = connection.execute(
+            """
+            INSERT INTO people (
+                public_id, name, embedding_model, centroid_embedding,
+                embedding_dim, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(uuid.uuid4()),
+                normalized or None,
+                face["embedding_model"],
+                face["embedding"],
+                face["embedding_dim"],
+                now,
+                now,
+            ),
+        )
+        person_id = int(cursor.lastrowid)
+        connection.execute("UPDATE faces SET person_id = ? WHERE id = ?", (person_id, face_id))
+        if old_person_id is not None:
+            _refresh_person_centroid(connection, old_person_id)
+    return get_person(database, person_id)
+
+
 def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, Any]:
     """Return the compact, read-optimized projection used by the Electron UI."""
     if not database.exists():
@@ -609,9 +982,17 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
         if run is None:
             rows = connection.execute(
                 """
-                SELECT i.id, i.path, i.file_name, i.width, i.height, i.taken_at,
+                SELECT i.id, i.path, i.file_name, i.width, i.height, i.orientation,
+                       i.taken_at,
                        i.modified_at, NULL AS quality, NULL AS sharpness,
-                       NULL AS exposure, 0 AS is_blurry, NULL AS similar_cluster,
+                       NULL AS exposure, NULL AS aesthetic_score,
+                       NULL AS composition_score, NULL AS rule_of_thirds,
+                       NULL AS frame_occupancy, NULL AS negative_space,
+                       NULL AS crop_risk, NULL AS color_balance,
+                       NULL AS color_harmony, NULL AS main_subject_json,
+                       '[]' AS scene_tags_json, '[]' AS object_tags_json,
+                       0 AS is_blurry, NULL AS similar_cluster, NULL AS story_id,
+                       NULL AS story_title,
                        0 AS auto_selected, 0 AS face_count, 0 AS people_count,
                        0 AS closed_eyes_count, 0 AS smiling_faces_count,
                        NULL AS people_names, 0 AS favorite, NULL AS selection_position
@@ -621,8 +1002,10 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
                 """
             ).fetchall()
             target_count = 24
+            story_rows: list[sqlite3.Row] = []
         else:
             _initialize_desktop_selection(connection, str(run["id"]))
+            _ensure_stories(connection, str(run["id"]))
             rows = connection.execute(
                 """
                 WITH face_summary AS (
@@ -639,9 +1022,15 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
                     WHERE f.run_id = ?
                     GROUP BY f.image_id
                 )
-                SELECT i.id, i.path, i.file_name, i.width, i.height, i.taken_at,
+                SELECT i.id, i.path, i.file_name, i.width, i.height, i.orientation,
+                       i.taken_at,
                        i.modified_at, pa.quality, pa.sharpness, pa.exposure,
-                       pa.is_blurry, pa.similar_cluster,
+                       pa.aesthetic_score, pa.composition_score, pa.rule_of_thirds,
+                       pa.frame_occupancy, pa.negative_space, pa.crop_risk,
+                       pa.color_balance, pa.color_harmony, pa.main_subject_json,
+                       pa.scene_tags_json, pa.object_tags_json,
+                       pa.is_blurry, pa.similar_cluster, pa.story_id,
+                       s.title AS story_title,
                        pa.selected AS auto_selected,
                        COALESCE(fs.face_count, 0) AS face_count,
                        COALESCE(fs.people_count, 0) AS people_count,
@@ -652,13 +1041,29 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
                        ps.position AS selection_position
                 FROM photo_analysis AS pa
                 JOIN images AS i ON i.id = pa.image_id
+                LEFT JOIN stories AS s
+                    ON s.run_id = pa.run_id AND s.story_id = pa.story_id
                 LEFT JOIN face_summary AS fs ON fs.image_id = i.id
                 LEFT JOIN photo_selections AS ps
                     ON ps.run_id = pa.run_id AND ps.image_id = i.id
                 WHERE pa.run_id = ? AND i.missing = 0
-                ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
+                ORDER BY pa.story_id, COALESCE(i.taken_at, i.modified_at), i.path
                 """,
                 (run["id"], run["id"]),
+            ).fetchall()
+            story_rows = connection.execute(
+                """
+                SELECT s.story_id AS id, s.title, s.started_at, s.ended_at,
+                       s.representative_image_id, s.naming_model,
+                       COUNT(pa.image_id) AS photo_count
+                FROM stories AS s
+                LEFT JOIN photo_analysis AS pa
+                    ON pa.run_id = s.run_id AND pa.story_id = s.story_id
+                WHERE s.run_id = ?
+                GROUP BY s.run_id, s.story_id
+                ORDER BY s.story_id
+                """,
+                (run["id"],),
             ).fetchall()
             setting = connection.execute(
                 "SELECT target_count FROM desktop_run_settings WHERE run_id = ?",
@@ -676,6 +1081,7 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
         "run": run_result,
         "target_count": target_count,
         "selected_count": selected_count,
+        "stories": [dict(row) for row in story_rows],
         "photos": photos,
     }
 
@@ -880,6 +1286,9 @@ def _desktop_photo(row: sqlite3.Row) -> dict[str, Any]:
         result[key] = bool(result[key])
     names = result.pop("people_names", None)
     result["people_names"] = names.split(",") if names else []
+    result["main_subject"] = _json_or_none(result.pop("main_subject_json", None))
+    result["scene_tags"] = json.loads(result.pop("scene_tags_json", "[]"))
+    result["object_tags"] = json.loads(result.pop("object_tags_json", "[]"))
     return result
 
 
@@ -899,6 +1308,42 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
     for name, sql_type in additions.items():
         if name not in columns:
             connection.execute(f"ALTER TABLE faces ADD COLUMN {name} {sql_type}")
+    analysis_columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(photo_analysis)")
+    }
+    analysis_additions = {
+        "aesthetic_score": "REAL",
+        "composition_score": "REAL",
+        "rule_of_thirds": "REAL",
+        "frame_occupancy": "REAL",
+        "negative_space": "REAL",
+        "crop_risk": "REAL",
+        "color_balance": "REAL",
+        "color_harmony": "REAL",
+        "main_subject_json": "TEXT",
+        "scene_tags_json": "TEXT NOT NULL DEFAULT '[]'",
+        "object_tags_json": "TEXT NOT NULL DEFAULT '[]'",
+        "story_id": "INTEGER",
+    }
+    for name, sql_type in analysis_additions.items():
+        if name not in analysis_columns:
+            connection.execute(f"ALTER TABLE photo_analysis ADD COLUMN {name} {sql_type}")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_photo_analysis_story
+        ON photo_analysis(run_id, story_id)
+        """
+    )
+    story_columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(stories)")
+    }
+    story_additions = {
+        "naming_model": "TEXT",
+        "algorithm_version": "INTEGER NOT NULL DEFAULT 1",
+    }
+    for name, sql_type in story_additions.items():
+        if name not in story_columns:
+            connection.execute(f"ALTER TABLE stories ADD COLUMN {name} {sql_type}")
     settings_columns = {
         str(row[1]) for row in connection.execute("PRAGMA table_info(desktop_run_settings)")
     }
@@ -912,6 +1357,18 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
         connection.execute(
             "UPDATE desktop_run_settings SET selection_initialized = 1"
         )
+
+
+def _analysis_result(row: sqlite3.Row) -> dict[str, Any]:
+    result = dict(row)
+    result["main_subject"] = _json_or_none(result.pop("main_subject_json", None))
+    result["scene_tags"] = json.loads(result.pop("scene_tags_json", "[]"))
+    result["object_tags"] = json.loads(result.pop("object_tags_json", "[]"))
+    return result
+
+
+def _json_or_none(value: str | None) -> Any:
+    return json.loads(value) if value else None
 
 
 def _encode_embedding(embedding: list[float] | None) -> bytes | None:

@@ -53,6 +53,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="не классифицировать глаза и мимику у лиц меньше этого размера",
     )
     analyze.add_argument("--face-backend", choices=("auto", "classic", "dnn"), default="auto")
+    analyze.add_argument(
+        "--semantic-backend",
+        choices=("auto", "clip", "off"),
+        default="auto",
+        help="CLIP-оценка эстетики и zero-shot теги (auto, clip или off)",
+    )
+    analyze.add_argument(
+        "--clip-model",
+        default="openai/clip-vit-base-patch32",
+        help="локальный путь или Hugging Face ID CLIP-модели",
+    )
+    analyze.add_argument("--semantic-threshold", type=float, default=0.15)
+    analyze.add_argument("--semantic-top-k", type=int, default=3)
+    analyze.add_argument(
+        "--story-gap-minutes",
+        type=int,
+        default=120,
+        help="обычный временной разрыв между сюжетами",
+    )
+    analyze.add_argument(
+        "--story-continuity-minutes",
+        type=int,
+        default=360,
+        help="максимальный разрыв при совпадении места, людей или сцены",
+    )
+    analyze.add_argument(
+        "--story-max-duration-hours",
+        type=int,
+        default=12,
+        help="максимальная продолжительность одного сюжета",
+    )
+    analyze.add_argument(
+        "--story-semantic-break-minutes",
+        type=int,
+        default=30,
+        help="минимальная пауза, после которой смена сцены разделяет сюжеты",
+    )
+    analyze.add_argument(
+        "--story-naming-backend",
+        choices=("auto", "rules", "lmstudio"),
+        default="auto",
+        help="содержательные названия сюжетов через локальную VL-модель",
+    )
+    analyze.add_argument("--lmstudio-url", default="http://127.0.0.1:1234/v1")
+    analyze.add_argument("--lmstudio-model", default="qwen/qwen3-vl-2b")
+    analyze.add_argument("--story-vlm-images", type=int, default=4)
+    analyze.add_argument("--story-vlm-timeout", type=float, default=90.0)
     analyze.add_argument("--models-dir", type=Path, default=Path("models"))
     analyze.add_argument(
         "--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"), help="путь к SQLite"
@@ -230,6 +277,19 @@ def main(argv: list[str] | None = None) -> None:
             min_face_size=args.min_face_size,
             min_attribute_face_size=args.min_attribute_face_size,
             face_backend=args.face_backend,
+            semantic_backend=args.semantic_backend,
+            clip_model=args.clip_model,
+            semantic_threshold=args.semantic_threshold,
+            semantic_top_k=args.semantic_top_k,
+            story_gap_minutes=args.story_gap_minutes,
+            story_continuity_minutes=args.story_continuity_minutes,
+            story_max_duration_hours=args.story_max_duration_hours,
+            story_semantic_break_minutes=args.story_semantic_break_minutes,
+            story_naming_backend=args.story_naming_backend,
+            lmstudio_url=args.lmstudio_url,
+            lmstudio_model=args.lmstudio_model,
+            story_vlm_images=args.story_vlm_images,
+            story_vlm_timeout=args.story_vlm_timeout,
             models_dir=args.models_dir,
         )
         manifest = analyze_library(

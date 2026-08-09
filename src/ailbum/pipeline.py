@@ -9,9 +9,11 @@ from pathlib import Path
 
 import numpy as np
 
+from ailbum.cv.aesthetics import analyze_color, analyze_composition
 from ailbum.cv.clustering import cluster_cosine
 from ailbum.cv.faces import FaceAnalyzer
 from ailbum.cv.quality import exposure_score, quality_score, sharpness_score
+from ailbum.cv.semantics import SemanticAnalyzer
 from ailbum.cv.similarity import PhotoFeatures, cluster_similar_photos, extract_photo_features
 from ailbum.database import new_run_id, save_analysis
 from ailbum.io import discover_images, load_image, relative_paths
@@ -24,6 +26,8 @@ from ailbum.models import (
     PhotoRecord,
     PipelineConfig,
 )
+from ailbum.stories import StoryPhoto, detect_stories
+from ailbum.story_naming import StoryNamer
 
 Progress = Callable[[str], None]
 
@@ -41,14 +45,22 @@ def analyze_library(
     paths = discover_images(source, recursive=recursive)
     if not paths:
         raise ValueError(f"No supported images found in {source}")
+    emit(f"Этап: Подготовка анализа|Найдено фотографий: {len(paths)}")
     display_paths = relative_paths(paths, source)
     output.mkdir(parents=True, exist_ok=True)
 
+    emit("Этап: Загрузка моделей|Подготавливаем анализ качества, лиц и содержимого")
     face_analyzer = FaceAnalyzer(
         config.models_dir,
         backend=config.face_backend,
         min_face_size=config.min_face_size,
         min_attribute_face_size=config.min_attribute_face_size,
+    )
+    semantic_analyzer = SemanticAnalyzer(
+        config.semantic_backend,
+        config.clip_model,
+        config.semantic_threshold,
+        config.semantic_top_k,
     )
     face_similarity = config.face_similarity
     if face_similarity is None:
@@ -58,6 +70,7 @@ def analyze_library(
     face_features: list[tuple[int, int, np.ndarray]] = []
     image_metadata: list[ImageMetadata] = []
 
+    emit("Этап: Анализ фотографий|Метаданные, качество, лица и содержимое")
     for index, path in enumerate(paths, start=1):
         emit(f"[{index}/{len(paths)}] {display_paths[path]}")
         metadata = collect_image_metadata(path, source)
@@ -125,6 +138,15 @@ def analyze_library(
                 face_features.append(
                     (len(records), face_index - 1, np.asarray(embedding, dtype=np.float32))
                 )
+            record.composition = analyze_composition(
+                image, [face.bbox for face in record.faces]
+            )
+            record.color = analyze_color(image)
+            try:
+                record.semantics = semantic_analyzer.analyze(image)
+            except Exception as error:  # noqa: BLE001 - semantic inference is non-critical
+                semantic_analyzer.error = f"{type(error).__name__}: {error}"
+                record.semantics = None
             records.append(record)
         # Continue a large import while making a corrupt file or backend failure visible.
         except Exception as error:  # noqa: BLE001
@@ -144,6 +166,7 @@ def analyze_library(
             )
             photo_features.append(None)
 
+    emit("Этап: Поиск похожих кадров|Группируем дубли и серии")
     valid_indices = [index for index, feature in enumerate(photo_features) if feature is not None]
     groups = cluster_similar_photos(
         [photo_features[index] for index in valid_indices],  # type: ignore[misc]
@@ -170,6 +193,7 @@ def analyze_library(
                 }
             )
 
+    emit("Этап: Группировка лиц|Связываем похожие лица с людьми")
     people: list[PersonRecord] = []
     embeddings = [item[2] for item in face_features]
     for person_id, member_indices in enumerate(
@@ -199,8 +223,57 @@ def analyze_library(
             )
         )
 
+    emit("Этап: Формирование сюжетов|Объединяем фотографии по времени и содержимому")
+    stories = detect_stories(
+        [
+            StoryPhoto(
+                photo_id=record.photo_id,
+                taken_at=record.taken_at,
+                gps_latitude=metadata.gps_latitude,
+                gps_longitude=metadata.gps_longitude,
+                people=frozenset(
+                    f"cluster:{face.person_cluster}"
+                    for face in record.faces
+                    if face.person_cluster is not None
+                ),
+                scenes=tuple(
+                    (tag.label, tag.confidence)
+                    for tag in (record.semantics.scenes if record.semantics else [])
+                ),
+                objects=tuple(
+                    (tag.label, tag.confidence)
+                    for tag in (record.semantics.objects if record.semantics else [])
+                ),
+                quality=record.quality,
+                is_blurry=record.is_blurry,
+            )
+            for record, metadata in zip(records, image_metadata, strict=True)
+        ],
+        gap_minutes=config.story_gap_minutes,
+        continuity_minutes=config.story_continuity_minutes,
+        max_duration_hours=config.story_max_duration_hours,
+        semantic_break_minutes=config.story_semantic_break_minutes,
+    )
+    emit("Этап: Названия сюжетов|Подбираем названия для групп фотографий")
+    story_namer = StoryNamer(
+        backend=config.story_naming_backend,
+        base_url=config.lmstudio_url,
+        model=config.lmstudio_model,
+        max_images=config.story_vlm_images,
+        timeout=config.story_vlm_timeout,
+    )
+    stories = story_namer.refine(
+        stories,
+        {record.photo_id: record.path for record in records},
+    )
+    story_by_photo = {
+        photo_id: story.story_id for story in stories for photo_id in story.photo_ids
+    }
+    for record in records:
+        record.story_id = story_by_photo[record.photo_id]
+
     manifest: dict[str, object] = {
-        "schema_version": 3,
+        "schema_version": 6,
         "run_id": new_run_id(),
         "started_at": started_at,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -208,6 +281,14 @@ def analyze_library(
         "database": str(database.resolve()) if database else None,
         "face_backend": face_analyzer.backend,
         "face_attribute_models": face_analyzer.attribute_models,
+        "semantic_backend": semantic_analyzer.backend,
+        "semantic_model": semantic_analyzer.model_name if semantic_analyzer.available else None,
+        "semantic_error": semantic_analyzer.error,
+        "story_naming_backend": story_namer.backend,
+        "story_naming_model": (
+            story_namer.model if story_namer.backend == "lmstudio" else None
+        ),
+        "story_naming_error": story_namer.error,
         "config": {
             **asdict(config),
             "face_similarity": face_similarity,
@@ -227,12 +308,24 @@ def analyze_library(
                 face.expression is not None for record in records for face in record.faces
             ),
             "people_groups": len(people),
+            "stories": len(stories),
+            "photos_with_aesthetic_score": sum(
+                record.semantics is not None
+                and record.semantics.aesthetic_score is not None
+                for record in records
+            ),
+            "photos_with_scene_tags": sum(
+                record.semantics is not None and bool(record.semantics.scenes)
+                for record in records
+            ),
         },
         "similar_groups": similar_groups,
         "people_groups": [person.to_dict() for person in people],
+        "story_groups": [story.to_dict() for story in stories],
         "photos": [record.to_dict() for record in records],
     }
     if database is not None:
+        emit("Этап: Сохранение|Записываем результаты анализа в базу данных")
         save_analysis(
             database,
             source,
@@ -242,9 +335,11 @@ def analyze_library(
             people,
             image_metadata,
             face_similarity,
+            stories=stories,
         )
         manifest["people_groups"] = [person.to_dict() for person in people]
         manifest["photos"] = [record.to_dict() for record in records]
+    emit("Этап: Завершение|Формируем файлы результатов")
     _write_outputs(output, manifest, records)
     return manifest
 
@@ -262,8 +357,19 @@ def _write_outputs(output: Path, manifest: dict[str, object], records: list[Phot
                 "sharpness",
                 "exposure",
                 "quality",
+                "aesthetic_score",
+                "composition_score",
+                "rule_of_thirds",
+                "frame_occupancy",
+                "negative_space",
+                "crop_risk",
+                "color_balance",
+                "color_harmony",
+                "scene_tags",
+                "object_tags",
                 "blurry",
                 "similar_cluster",
+                "story_id",
                 "faces",
                 "selected",
                 "error",
@@ -277,8 +383,43 @@ def _write_outputs(output: Path, manifest: dict[str, object], records: list[Phot
                     record.sharpness,
                     record.exposure,
                     record.quality,
+                    (
+                        record.semantics.aesthetic_score
+                        if record.semantics is not None
+                        else ""
+                    ),
+                    record.composition.score if record.composition is not None else "",
+                    (
+                        record.composition.rule_of_thirds
+                        if record.composition is not None
+                        else ""
+                    ),
+                    (
+                        record.composition.frame_occupancy
+                        if record.composition is not None
+                        else ""
+                    ),
+                    (
+                        record.composition.negative_space
+                        if record.composition is not None
+                        else ""
+                    ),
+                    record.composition.crop_risk if record.composition is not None else "",
+                    record.color.balance if record.color is not None else "",
+                    record.color.harmony if record.color is not None else "",
+                    (
+                        ";".join(tag.label for tag in record.semantics.scenes)
+                        if record.semantics is not None
+                        else ""
+                    ),
+                    (
+                        ";".join(tag.label for tag in record.semantics.objects)
+                        if record.semantics is not None
+                        else ""
+                    ),
                     record.is_blurry,
                     record.similar_cluster or "",
+                    record.story_id or "",
                     len(record.faces),
                     record.selected,
                     record.error or "",

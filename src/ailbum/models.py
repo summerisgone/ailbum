@@ -63,6 +63,60 @@ class PersonRecord:
 
 
 @dataclass(slots=True)
+class SubjectRecord:
+    bbox: tuple[float, float, float, float]
+    center: tuple[float, float]
+    source: str
+
+
+@dataclass(slots=True)
+class CompositionRecord:
+    rule_of_thirds: float
+    frame_occupancy: float
+    negative_space: float
+    crop_risk: float
+    score: float
+    main_subject: SubjectRecord | None = None
+
+
+@dataclass(slots=True)
+class ColorRecord:
+    balance: float
+    harmony: float
+    mean_saturation: float
+
+
+@dataclass(slots=True)
+class TagRecord:
+    label: str
+    confidence: float
+
+
+@dataclass(slots=True)
+class SemanticRecord:
+    aesthetic_score: float | None
+    model: str | None
+    scenes: list[TagRecord] = field(default_factory=list)
+    objects: list[TagRecord] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class StoryRecord:
+    story_id: int
+    title: str
+    photo_ids: list[str]
+    started_at: str | None
+    ended_at: str | None
+    representative_photo_id: str
+    scene_labels: list[str] = field(default_factory=list)
+    object_labels: list[str] = field(default_factory=list)
+    naming_model: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class PhotoRecord:
     photo_id: str
     path: str
@@ -73,7 +127,11 @@ class PhotoRecord:
     exposure: float
     quality: float
     is_blurry: bool
+    composition: CompositionRecord | None = None
+    color: ColorRecord | None = None
+    semantics: SemanticRecord | None = None
     similar_cluster: int | None = None
+    story_id: int | None = None
     selected: bool = False
     faces: list[FaceRecord] = field(default_factory=list)
     error: str | None = None
@@ -96,4 +154,17 @@ class PipelineConfig:
     min_attribute_face_size: int = 64
     max_image_side: int = 1600
     face_backend: str = "auto"
+    semantic_backend: str = "auto"
+    clip_model: str = "openai/clip-vit-base-patch32"
+    semantic_threshold: float = 0.15
+    semantic_top_k: int = 3
+    story_gap_minutes: int = 120
+    story_continuity_minutes: int = 360
+    story_max_duration_hours: int = 12
+    story_semantic_break_minutes: int = 30
+    story_naming_backend: str = "auto"
+    lmstudio_url: str = "http://127.0.0.1:1234/v1"
+    lmstudio_model: str = "qwen/qwen3-vl-2b"
+    story_vlm_images: int = 4
+    story_vlm_timeout: float = 90.0
     models_dir: Path = Path("models")

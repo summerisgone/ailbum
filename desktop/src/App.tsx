@@ -1,7 +1,10 @@
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleUserRound,
   Database,
+  FolderInput,
   EyeOff,
   FolderOpen,
   Heart,
@@ -27,7 +30,17 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
-import type { Library, Photo } from "./types";
+import type {
+  Face,
+  FaceCollection,
+  DatabaseJob,
+  DatabaseSummary,
+  Library,
+  PeopleLibrary,
+  PersonSummary,
+  Photo,
+  Story,
+} from "./types";
 
 const DAY_FORMAT = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -41,8 +54,10 @@ const TIME_FORMAT = new Intl.DateTimeFormat("ru-RU", {
 });
 
 type GridRow =
-  | { kind: "header"; key: string; date: string; count: number }
+  | { kind: "header"; key: string; story: Story; count: number }
   | { kind: "photos"; key: string; photos: Photo[] };
+
+type StoryJump = { storyId: number; token: number };
 
 function dateOf(photo: Photo) {
   return (photo.taken_at || photo.modified_at || "Без даты").slice(0, 10);
@@ -57,8 +72,34 @@ function dateLabel(value: string) {
   };
 }
 
+function storyPeriodLabel(story: Story) {
+  if (!story.started_at) return "Время неизвестно";
+  const start = new Date(story.started_at);
+  const end = new Date(story.ended_at || story.started_at);
+  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) return "Время неизвестно";
+  if (dateOfValue(start) === dateOfValue(end)) {
+    const times = start.valueOf() === end.valueOf()
+      ? TIME_FORMAT.format(start)
+      : `${TIME_FORMAT.format(start)}–${TIME_FORMAT.format(end)}`;
+    return `${DAY_FORMAT.format(start)} · ${times}`;
+  }
+  return `${DAY_FORMAT.format(start)} — ${DAY_FORMAT.format(end)}`;
+}
+
+function dateOfValue(value: Date) {
+  return `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`;
+}
+
 function scoreOf(photo: Photo) {
   return photo.quality == null ? null : Math.round(photo.quality * 100);
+}
+
+function isPortraitPhoto(photo: Photo) {
+  if (photo.width == null || photo.height == null) return false;
+  const swapsAxes = [5, 6, 7, 8].includes(photo.orientation ?? 1);
+  const displayWidth = swapsAxes ? photo.height : photo.width;
+  const displayHeight = swapsAxes ? photo.width : photo.height;
+  return displayHeight > displayWidth;
 }
 
 function App() {
@@ -67,16 +108,32 @@ function App() {
   const [pending, setPending] = useState<Set<number>>(() => new Set());
   const [query, setQuery] = useState("");
   const [targetDraft, setTargetDraft] = useState("24");
+  const [section, setSection] = useState<"photos" | "people">("photos");
+  const [viewerPhotoId, setViewerPhotoId] = useState<number | null>(null);
+  const [storyJump, setStoryJump] = useState<StoryJump | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [databaseJob, setDatabaseJob] = useState<DatabaseJob>({ status: "idle" });
 
   const applyLibrary = useCallback((next: Library) => {
     setLibrary(next);
     setTargetDraft(String(next.target_count));
+    setViewerPhotoId(null);
     setError(null);
   }, []);
 
   useEffect(() => {
     window.ailbum.bootstrap().then(applyLibrary).catch((reason) => setError(String(reason)));
   }, [applyLibrary]);
+
+  useEffect(() => {
+    window.ailbum.getDatabaseJob().then(setDatabaseJob).catch(() => undefined);
+    return window.ailbum.onDatabaseJob(setDatabaseJob);
+  }, []);
+
+  useEffect(() => {
+    if (databaseJob.status !== "complete") return;
+    window.ailbum.bootstrap().then(applyLibrary).catch((reason) => setError(String(reason)));
+  }, [applyLibrary, databaseJob.status]);
 
   const photos = useMemo(() => {
     if (!library) return [];
@@ -85,7 +142,11 @@ function App() {
     return library.photos.filter(
       (photo) =>
         photo.file_name.toLocaleLowerCase("ru").includes(normalized) ||
-        photo.people_names.some((name) => name.toLocaleLowerCase("ru").includes(normalized)),
+        photo.story_title?.toLocaleLowerCase("ru").includes(normalized) ||
+        photo.people_names.some((name) => name.toLocaleLowerCase("ru").includes(normalized)) ||
+        [...photo.scene_tags, ...photo.object_tags].some((tag) =>
+          tag.label.toLocaleLowerCase("ru").includes(normalized),
+        ),
     );
   }, [library, query]);
 
@@ -100,6 +161,15 @@ function App() {
         ),
     [library],
   );
+
+  const jumpToPhotoStory = useCallback((photo: Photo) => {
+    if (photo.story_id == null) return;
+    setQuery("");
+    setStoryJump((current) => ({
+      storyId: photo.story_id as number,
+      token: (current?.token ?? 0) + 1,
+    }));
+  }, []);
 
   const toggleFavorite = useCallback(
     async (photo: Photo, favorite: boolean) => {
@@ -173,48 +243,62 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-platform={window.ailbum.platform}>
       <aside className="sidebar">
         <div className="brand" aria-label="Ailbum">
           <span className="brand-mark"><ImageIcon size={21} strokeWidth={2.4} /></span>
           <span>A</span>
         </div>
         <nav className="primary-nav" aria-label="Разделы">
-          <button className="nav-button active" title="Отбор фотографий">
+          <button
+            className={`nav-button${section === "photos" ? " active" : ""}`}
+            title="Отбор фотографий"
+            onClick={() => setSection("photos")}
+          >
             <Images size={22} />
           </button>
-          <button className="nav-button" title="Люди — следующий этап" disabled>
+          <button
+            className={`nav-button${section === "people" ? " active" : ""}`}
+            title="Люди и лица"
+            data-section="people"
+            onClick={() => setSection("people")}
+          >
             <UsersRound size={22} />
-            <span className="soon-dot" />
           </button>
         </nav>
-        <button className="nav-button sidebar-bottom" title="Настройки">
+        <button
+          className={`nav-button sidebar-bottom${settingsOpen ? " active" : ""}`}
+          title="Базы данных и анализ"
+          aria-label="Базы данных и анализ"
+          onClick={() => setSettingsOpen(true)}
+        >
           <Settings2 size={21} />
+          {databaseJob.status === "running" && <span className="job-dot" />}
         </button>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div className="title-block">
-            <h1>Отбор фотографий</h1>
+            <h1>{section === "photos" ? "Отбор фотографий" : "Люди и лица"}</h1>
             <button className="database-button" onClick={chooseDatabase} title={library?.database}>
               <Database size={13} />
               <span>{library?.database.split(/[\\/]/).at(-1) ?? "Каталог"}</span>
             </button>
           </div>
-          <label className="search-box">
+          {section === "photos" && <label className="search-box">
             <Search size={17} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Фото или человек"
+              placeholder="Фото, человек или сюжет"
               aria-label="Поиск фотографий"
             />
             {query && (
               <button onClick={() => setQuery("")} aria-label="Очистить поиск"><X size={14} /></button>
             )}
-          </label>
-          <div className="target-control">
+          </label>}
+          {section === "photos" && <div className="target-control">
             <span>Нужно выбрать</span>
             <input
               value={targetDraft}
@@ -226,12 +310,12 @@ function App() {
               disabled={!library?.run}
             />
             <span>фото</span>
-          </div>
-          <div className="selection-counter" data-complete={selected.length >= (library?.target_count ?? 1)}>
+          </div>}
+          {section === "photos" && <div className="selection-counter" data-complete={selected.length >= (library?.target_count ?? 1)}>
             <Check size={16} />
             <strong>{selected.length}</strong>
             <span>/ {library?.target_count ?? 0}</span>
-          </div>
+          </div>}
           <button className="avatar" aria-label="Профиль"><CircleUserRound size={20} /></button>
         </header>
 
@@ -242,7 +326,9 @@ function App() {
           </div>
         )}
 
-        {!library?.run ? (
+        {section === "people" ? (
+          <PeopleEditor database={library?.database ?? ""} onError={setError} />
+        ) : !library?.run ? (
           <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
         ) : (
           <>
@@ -258,19 +344,458 @@ function App() {
                 <span><UsersRound size={13} /> лица</span>
               </div>
             </div>
-            <VirtualPhotoGrid photos={photos} pending={pending} onToggle={toggleFavorite} />
+            <VirtualPhotoGrid
+              photos={photos}
+              stories={library.stories}
+              pending={pending}
+              storyJump={storyJump}
+              onToggle={toggleFavorite}
+              onOpen={(photo) => setViewerPhotoId(photo.id)}
+            />
             <SelectionTray
               photos={selected}
               target={library.target_count}
               pending={pending}
               onRemove={(photo) => toggleFavorite(photo, false)}
+              onJump={jumpToPhotoStory}
             />
           </>
         )}
       </main>
+      {viewerPhotoId != null && (
+        <PhotoViewer
+          photos={photos}
+          photoId={viewerPhotoId}
+          onChange={setViewerPhotoId}
+          onClose={() => setViewerPhotoId(null)}
+        />
+      )}
+      {settingsOpen && library && (
+        <DatabaseManager
+          library={library}
+          job={databaseJob}
+          onJob={setDatabaseJob}
+          onLibrary={applyLibrary}
+          onClose={() => setSettingsOpen(false)}
+          onError={setError}
+        />
+      )}
     </div>
   );
 }
+
+function DatabaseManager({
+  library,
+  job,
+  onJob,
+  onLibrary,
+  onClose,
+  onError,
+}: {
+  library: Library;
+  job: DatabaseJob;
+  onJob(job: DatabaseJob): void;
+  onLibrary(library: Library): void;
+  onClose(): void;
+  onError(message: string): void;
+}) {
+  const [summary, setSummary] = useState<DatabaseSummary | null>(null);
+  const [folders, setFolders] = useState<string[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const running = job.status === "running";
+  const progress = job.current != null && job.total
+    ? Math.min(100, Math.round((job.current / job.total) * 100))
+    : null;
+
+  const refreshSummary = useCallback(() => {
+    window.ailbum.getDatabaseSummary().then(setSummary).catch((reason) => onError(String(reason)));
+  }, [onError]);
+
+  useEffect(refreshSummary, [library.database, refreshSummary]);
+  useEffect(() => {
+    if (job.status === "complete") refreshSummary();
+  }, [job.status, refreshSummary]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const switchDatabase = async (create: boolean) => {
+    try {
+      const next = create
+        ? await window.ailbum.createDatabase()
+        : await window.ailbum.chooseDatabase();
+      if (next) {
+        onLibrary(next);
+        setFolders([]);
+        onJob({ status: "idle" });
+      }
+    } catch (reason) {
+      onError(String(reason));
+    }
+  };
+
+  const addFolders = (paths: string[]) => {
+    setFolders((current) => [...new Set([...current, ...paths.filter(Boolean)])]);
+  };
+
+  const chooseFolders = async () => {
+    try {
+      addFolders(await window.ailbum.choosePhotoFolders());
+    } catch (reason) {
+      onError(String(reason));
+    }
+  };
+
+  const startJob = async (kind: "index" | "analyze", sources: string[] = []) => {
+    try {
+      onJob(await window.ailbum.startDatabaseJob(kind, sources));
+    } catch (reason) {
+      onError(String(reason));
+    }
+  };
+
+  const databaseName = library.database.split(/[\\/]/).at(-1);
+  return (
+    <div className="database-overlay" role="dialog" aria-modal="true" aria-label="Управление базами данных" onClick={onClose}>
+      <section className="database-manager" onClick={(event) => event.stopPropagation()}>
+        <header className="database-manager-header">
+          <div>
+            <span className="eyebrow">Настройки</span>
+            <h2>База данных и анализ</h2>
+          </div>
+          <button onClick={onClose} aria-label="Закрыть"><X size={20} /></button>
+        </header>
+
+        <div className="database-manager-body">
+          <section className="manager-section current-database">
+            <div className="section-heading">
+              <div className="manager-icon"><Database size={19} /></div>
+              <div><strong>{databaseName}</strong><span title={library.database}>{library.database}</span></div>
+            </div>
+            <div className="database-stats">
+              <div><strong>{summary?.available ?? library.photos.length}</strong><span>фото</span></div>
+              <div><strong>{summary?.analysis_runs ?? (library.run ? 1 : 0)}</strong><span>анализов</span></div>
+              <div><strong>{summary?.people ?? 0}</strong><span>людей</span></div>
+              <div><strong>{summary?.stories ?? library.stories.length}</strong><span>сюжетов</span></div>
+            </div>
+            <div className="manager-actions">
+              <button disabled={running} onClick={() => switchDatabase(false)}><FolderOpen size={15} />Открыть другую</button>
+              <button disabled={running} onClick={() => switchDatabase(true)}><Plus size={15} />Создать новую</button>
+            </div>
+          </section>
+
+          <section className="manager-section">
+            <div className="section-copy">
+              <strong>Добавить фотографии</strong>
+              <span>Перетащите одну или несколько папок. В базу попадут фотографии из всех вложенных каталогов.</span>
+            </div>
+            <div
+              className={`folder-drop${dragging ? " dragging" : ""}`}
+              onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+              onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragging(false);
+                addFolders(Array.from(event.dataTransfer.files, (file) => window.ailbum.pathForFile(file)));
+              }}
+            >
+              <FolderInput size={25} />
+              <strong>{dragging ? "Отпустите папки здесь" : "Перетащите папки с фото"}</strong>
+              <span>или</span>
+              <button onClick={chooseFolders} disabled={running}>Выбрать папки</button>
+            </div>
+            {folders.length > 0 && (
+              <div className="folder-queue">
+                {folders.map((folder) => (
+                  <div key={folder} title={folder}>
+                    <FolderOpen size={14} /><span>{folder}</span>
+                    <button disabled={running} onClick={() => setFolders((items) => items.filter((item) => item !== folder))} aria-label="Убрать папку"><X size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="manager-primary" disabled={running || folders.length === 0} onClick={() => startJob("index", folders)}>
+              {running && job.kind === "index" ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}
+              Добавить в базу
+            </button>
+          </section>
+
+          <section className="manager-section analysis-section">
+            <div className="section-copy">
+              <strong>{folders.length === 1 ? "Анализ выбранной папки" : library.run ? "Повторный анализ" : "Анализ фотографий"}</strong>
+              <span>{folders.length === 1 ? `Источник: ${folders[0]}` : library.run ? `Последний источник: ${library.run.source}` : "Выберите одну папку выше, чтобы запустить первый анализ."}</span>
+            </div>
+            <button
+              className="manager-primary secondary"
+              disabled={running || (!library.run && folders.length !== 1)}
+              onClick={() => startJob("analyze", folders.length === 1 ? folders : [])}
+            >
+              {running && job.kind === "analyze" ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
+              {folders.length === 1 || !library.run ? "Запустить анализ папки" : "Запустить анализ заново"}
+            </button>
+          </section>
+
+          {job.status !== "idle" && (
+            <section className={`job-panel ${job.status}`}>
+              <div className="job-heading">
+                <div>
+                  {running ? <LoaderCircle className="spin" size={18} /> : job.status === "complete" ? <Check size={18} /> : <X size={18} />}
+                  <span><strong>{job.stage || (job.status === "complete" ? "Готово" : "Операция остановлена")}</strong><small>{job.detail}</small></span>
+                </div>
+                {running && <button onClick={() => window.ailbum.cancelDatabaseJob().then(onJob)}>Отменить</button>}
+              </div>
+              {running && (
+                <div className={`job-progress${progress == null ? " indeterminate" : ""}`}>
+                  <span style={progress == null ? undefined : { width: `${progress}%` }} />
+                </div>
+              )}
+              {running && job.current != null && job.total != null && <p>{job.current} из {job.total} фотографий</p>}
+              {job.status === "error" && <p>{job.error}</p>}
+              {job.status === "complete" && <p>Данные обновлены, каталог перезагружен.</p>}
+            </section>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PeopleEditor({ database, onError }: { database: string; onError(message: string): void }) {
+  const [peopleLibrary, setPeopleLibrary] = useState<PeopleLibrary | null>(null);
+  const [activePersonId, setActivePersonId] = useState<number | null | undefined>(undefined);
+  const [collection, setCollection] = useState<FaceCollection | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [loadingFaces, setLoadingFaces] = useState(false);
+  const [pendingFaces, setPendingFaces] = useState<Set<number>>(() => new Set());
+  const [savingName, setSavingName] = useState(false);
+
+  const refreshPeople = useCallback(async () => {
+    const next = await window.ailbum.getPeople();
+    setPeopleLibrary(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    setPeopleLibrary(null);
+    setCollection(null);
+    setActivePersonId(undefined);
+    window.ailbum
+      .getPeople()
+      .then((next) => {
+        setPeopleLibrary(next);
+        setActivePersonId(next.people[0]?.id ?? null);
+      })
+      .catch((reason) => onError(String(reason)));
+  }, [database, onError]);
+
+  const loadFaces = useCallback(async (personId: number | null) => {
+    setLoadingFaces(true);
+    try {
+      const next = await window.ailbum.getFaces(personId);
+      setCollection(next);
+      setNameDraft(next.person?.name ?? "");
+    } finally {
+      setLoadingFaces(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activePersonId === undefined) return;
+    setCollection(null);
+    loadFaces(activePersonId).catch((reason) => onError(String(reason)));
+  }, [activePersonId, loadFaces, onError]);
+
+  const saveName = useCallback(async () => {
+    if (activePersonId == null || savingName) return;
+    setSavingName(true);
+    try {
+      await window.ailbum.setPersonName(activePersonId, nameDraft);
+      await refreshPeople();
+      setCollection((current) =>
+        current?.person?.id === activePersonId
+          ? { ...current, person: { ...current.person, name: nameDraft.trim() || null } }
+          : current,
+      );
+    } catch (reason) {
+      onError(String(reason));
+    } finally {
+      setSavingName(false);
+    }
+  }, [activePersonId, nameDraft, onError, refreshPeople, savingName]);
+
+  const assignFace = useCallback(
+    async (face: Face, destination: string) => {
+      if (pendingFaces.has(face.id)) return;
+      setPendingFaces((current) => new Set(current).add(face.id));
+      try {
+        if (destination === "new") {
+          const person = await window.ailbum.createPersonFromFace(face.id, "");
+          await refreshPeople();
+          setActivePersonId(person.id);
+        } else {
+          const personId = destination === "none" ? null : Number(destination);
+          await window.ailbum.assignFace(face.id, personId);
+          await refreshPeople();
+          if (activePersonId !== undefined) await loadFaces(activePersonId);
+        }
+      } catch (reason) {
+        onError(String(reason));
+      } finally {
+        setPendingFaces((current) => {
+          const next = new Set(current);
+          next.delete(face.id);
+          return next;
+        });
+      }
+    },
+    [activePersonId, loadFaces, onError, pendingFaces, refreshPeople],
+  );
+
+  if (!peopleLibrary) {
+    return <div className="loading-screen"><LoaderCircle className="spin" size={22} />Загружаем лица…</div>;
+  }
+
+  return (
+    <div className="people-editor">
+      <aside className="people-panel">
+        <div className="people-panel-heading">
+          <span>Люди</span>
+          <strong>{peopleLibrary.people.length}</strong>
+        </div>
+        <div className="people-list">
+          <button
+            className={`person-row${activePersonId === null ? " active" : ""}`}
+            onClick={() => setActivePersonId(null)}
+          >
+            <span className="person-avatar unassigned"><UsersRound size={18} /></span>
+            <span><strong>Без человека</strong><small>Нужно разобрать</small></span>
+            <b>{peopleLibrary.unassigned_count}</b>
+          </button>
+          {peopleLibrary.people.map((person) => (
+            <button
+              className={`person-row${activePersonId === person.id ? " active" : ""}`}
+              onClick={() => setActivePersonId(person.id)}
+              key={person.id}
+            >
+              <span className="person-avatar">{(person.name?.trim()[0] || "?").toLocaleUpperCase("ru")}</span>
+              <span>
+                <strong>{person.name || `Человек ${person.id}`}</strong>
+                <small>{person.photo_count} фото</small>
+              </span>
+              <b>{person.face_count}</b>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <section className="faces-workspace">
+        <header className="faces-header">
+          <div>
+            <span className="eyebrow">{activePersonId == null ? "Не назначены" : "Выбранный человек"}</span>
+            {activePersonId == null ? (
+              <h2>Лица без связи</h2>
+            ) : (
+              <form
+                className="person-name-form"
+                onSubmit={(event) => { event.preventDefault(); void saveName(); }}
+              >
+                <input
+                  value={nameDraft}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  onBlur={() => void saveName()}
+                  placeholder={`Человек ${activePersonId}`}
+                  aria-label="Имя человека"
+                />
+                {savingName && <LoaderCircle className="spin" size={16} />}
+              </form>
+            )}
+          </div>
+          <div className="face-summary">
+            <strong>{collection?.faces.length ?? 0}</strong>
+            <span>наблюдений лица</span>
+            {collection?.person && <small>{collection.person.embedding_model}</small>}
+          </div>
+        </header>
+
+        {loadingFaces || !collection ? (
+          <div className="loading-screen"><LoaderCircle className="spin" size={22} />Загружаем лица…</div>
+        ) : collection.faces.length === 0 ? (
+          <div className="faces-empty">
+            <span><UsersRound size={25} /></span>
+            <h3>{activePersonId == null ? "Все лица распределены" : "У человека пока нет лиц"}</h3>
+            <p>Назначение можно изменить в меню на карточке любого лица.</p>
+          </div>
+        ) : (
+          <div className="faces-scroller">
+            <div className="faces-grid">
+              {collection.faces.map((face) => (
+                <FaceCard
+                  face={face}
+                  people={peopleLibrary.people}
+                  pending={pendingFaces.has(face.id)}
+                  onAssign={assignFace}
+                  key={face.id}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+const FaceCard = memo(function FaceCard({
+  face,
+  people,
+  pending,
+  onAssign,
+}: {
+  face: Face;
+  people: PersonSummary[];
+  pending: boolean;
+  onAssign(face: Face, destination: string): void;
+}) {
+  const date = face.taken_at ? new Date(face.taken_at) : null;
+  const currentValue = face.person_id == null ? "none" : String(face.person_id);
+  return (
+    <article className="face-card">
+      <div className="face-crop">
+        <img src={window.ailbum.faceUrl(face.id)} alt="" loading="lazy" decoding="async" />
+        {pending && <span className="face-pending"><LoaderCircle className="spin" size={19} /></span>}
+        <span className="face-confidence">{Math.round(face.confidence * 100)}%</span>
+      </div>
+      <div className="face-meta">
+        <strong title={face.file_name}>{face.file_name}</strong>
+        <span>{date && !Number.isNaN(date.valueOf()) ? DAY_FORMAT.format(date) : "Дата неизвестна"}</span>
+      </div>
+      <label className="face-assignment">
+        <UsersRound size={14} />
+        <select
+          value={currentValue}
+          disabled={pending}
+          onChange={(event) => onAssign(face, event.target.value)}
+          aria-label={`Назначение лица из ${face.file_name}`}
+        >
+          <option value="none">Без человека</option>
+          <option value="new">＋ Новый человек</option>
+          {people
+            .filter((person) => person.embedding_model === face.embedding_model)
+            .map((person) => (
+              <option value={person.id} key={person.id}>
+                {person.name || `Человек ${person.id}`} · {person.face_count}
+              </option>
+            ))}
+        </select>
+      </label>
+    </article>
+  );
+});
 
 function EmptyState({ onChooseDatabase, hasPhotos }: { onChooseDatabase(): void; hasPhotos: boolean }) {
   return (
@@ -311,41 +836,58 @@ function columnCount(width: number) {
 
 function VirtualPhotoGrid({
   photos,
+  stories,
   pending,
+  storyJump,
   onToggle,
+  onOpen,
 }: {
   photos: Photo[];
+  stories: Story[];
   pending: Set<number>;
+  storyJump: StoryJump | null;
   onToggle(photo: Photo, favorite: boolean): void;
+  onOpen(photo: Photo): void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const { width, height } = useElementSize(scrollerRef);
   const [scrollTop, setScrollTop] = useState(0);
+  const [highlightedStory, setHighlightedStory] = useState<number | null>(null);
   const columns = columnCount(width);
   const cardWidth = Math.max(150, (width - 48 - (columns - 1) * 12) / columns);
   const photoRowHeight = Math.round(cardWidth * 0.68 + 46);
 
   const rows = useMemo(() => {
-    const groups = new Map<string, Photo[]>();
+    const storyById = new Map(stories.map((story) => [story.id, story]));
+    const groups = new Map<number, Photo[]>();
     for (const photo of photos) {
-      const day = dateOf(photo);
-      const group = groups.get(day);
+      const storyId = photo.story_id ?? 0;
+      const group = groups.get(storyId);
       if (group) group.push(photo);
-      else groups.set(day, [photo]);
+      else groups.set(storyId, [photo]);
     }
     const result: GridRow[] = [];
-    for (const [date, items] of groups) {
-      result.push({ kind: "header", key: `header-${date}`, date, count: items.length });
+    for (const [storyId, items] of groups) {
+      const story = storyById.get(storyId) ?? {
+        id: storyId,
+        title: items[0]?.story_title || "Без сюжета",
+        started_at: items[0]?.taken_at || items[0]?.modified_at || null,
+        ended_at: items.at(-1)?.taken_at || items.at(-1)?.modified_at || null,
+        representative_image_id: items[0]?.id ?? null,
+        photo_count: items.length,
+        naming_model: null,
+      };
+      result.push({ kind: "header", key: `header-${storyId}`, story, count: items.length });
       for (let index = 0; index < items.length; index += columns) {
         result.push({
           kind: "photos",
-          key: `${date}-${index}`,
+          key: `${storyId}-${index}`,
           photos: items.slice(index, index + columns),
         });
       }
     }
     return result;
-  }, [photos, columns]);
+  }, [photos, stories, columns]);
 
   const layout = useMemo(() => {
     const offsets: number[] = [];
@@ -359,6 +901,18 @@ function VirtualPhotoGrid({
     }
     return { offsets, heights, total };
   }, [rows, photoRowHeight]);
+
+  useEffect(() => {
+    if (!storyJump || !scrollerRef.current) return;
+    const rowIndex = rows.findIndex(
+      (row) => row.kind === "header" && row.story.id === storyJump.storyId,
+    );
+    if (rowIndex < 0) return;
+    scrollerRef.current.scrollTo({ top: layout.offsets[rowIndex], behavior: "smooth" });
+    setHighlightedStory(storyJump.storyId);
+    const timeout = window.setTimeout(() => setHighlightedStory(null), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [storyJump, layout.offsets, rows]);
 
   useEffect(() => {
     const element = scrollerRef.current;
@@ -405,10 +959,13 @@ function VirtualPhotoGrid({
             transform: `translateY(${layout.offsets[index]}px)`,
           } satisfies CSSProperties;
           if (row.kind === "header") {
-            const label = dateLabel(row.date);
             return (
-              <div className="day-header virtual-row" style={style} key={row.key}>
-                <div><strong>{label.date}</strong><span>{label.weekday}</span></div>
+              <div
+                className={`story-header virtual-row${highlightedStory === row.story.id ? " highlighted" : ""}`}
+                style={style}
+                key={row.key}
+              >
+                <div><strong>{row.story.title}</strong><span>{storyPeriodLabel(row.story)}</span></div>
                 <span>{row.count} фото</span>
               </div>
             );
@@ -424,6 +981,7 @@ function VirtualPhotoGrid({
                   photo={photo}
                   pending={pending.has(photo.id)}
                   onToggle={onToggle}
+                  onOpen={onOpen}
                   key={photo.id}
                 />
               ))}
@@ -439,24 +997,46 @@ const PhotoCard = memo(function PhotoCard({
   photo,
   pending,
   onToggle,
+  onOpen,
 }: {
   photo: Photo;
   pending: boolean;
   onToggle(photo: Photo, favorite: boolean): void;
+  onOpen(photo: Photo): void;
 }) {
   const score = scoreOf(photo);
+  const aesthetic =
+    photo.aesthetic_score == null ? null : Math.round(photo.aesthetic_score * 100);
   const takenAt = photo.taken_at ? new Date(photo.taken_at) : null;
   return (
-    <article className={`photo-card${photo.favorite ? " selected" : ""}`}>
-      <div className="photo-frame">
+    <article
+      className={`photo-card${photo.favorite ? " selected" : ""}`}
+      onClick={() => onOpen(photo)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(photo);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Открыть ${photo.file_name}`}
+    >
+      <div className={`photo-frame${isPortraitPhoto(photo) ? " portrait" : ""}`}>
         <img src={window.ailbum.mediaUrl(photo.id)} alt={photo.file_name} loading="lazy" decoding="async" />
         <div className="photo-topline">
-          <span className={`score score-${score == null ? "none" : score >= 75 ? "high" : score >= 55 ? "mid" : "low"}`}>
+          <span
+            className={`score score-${score == null ? "none" : score >= 75 ? "high" : score >= 55 ? "mid" : "low"}`}
+            title={`Техническое качество${score == null ? " не оценено" : `: ${score}`}`}
+          >
             {score == null ? "—" : score}
           </span>
           <button
             className="favorite-button"
-            onClick={() => onToggle(photo, !photo.favorite)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggle(photo, !photo.favorite);
+            }}
             disabled={pending}
             aria-label={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
             title={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
@@ -470,6 +1050,12 @@ const PhotoCard = memo(function PhotoCard({
           {photo.face_count > 0 && <span title={`${photo.face_count} лиц`}><UsersRound size={13} />{photo.face_count}</span>}
           {photo.smiling_faces_count > 0 && <span title="Есть улыбки"><Smile size={13} /></span>}
           {photo.closed_eyes_count > 0 && <span className="warning" title="Обнаружены закрытые глаза"><EyeOff size={13} /></span>}
+          {aesthetic != null && <span title={`CLIP-оценка эстетики: ${aesthetic}`}><Sparkles size={13} />{aesthetic}</span>}
+          {photo.scene_tags[0] && (
+            <span title={`Сюжет: ${photo.scene_tags.map((tag) => tag.label).join(", ")}`}>
+              {photo.scene_tags[0].label}
+            </span>
+          )}
         </div>
       </div>
       <div className="photo-meta">
@@ -480,16 +1066,107 @@ const PhotoCard = memo(function PhotoCard({
   );
 });
 
+function PhotoViewer({
+  photos,
+  photoId,
+  onChange,
+  onClose,
+}: {
+  photos: Photo[];
+  photoId: number;
+  onChange(photoId: number): void;
+  onClose(): void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const index = photos.findIndex((photo) => photo.id === photoId);
+  const photo = photos[index];
+  const previous = index > 0 ? photos[index - 1] : null;
+  const next = index >= 0 && index < photos.length - 1 ? photos[index + 1] : null;
+
+  useEffect(() => setLoaded(false), [photoId]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      else if (event.key === "ArrowLeft" && previous) onChange(previous.id);
+      else if (event.key === "ArrowRight" && next) onChange(next.id);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [next, onChange, onClose, previous]);
+
+  useEffect(() => {
+    if (!photo) onClose();
+  }, [onClose, photo]);
+
+  if (!photo) return null;
+  const label = dateLabel(dateOf(photo));
+  const score = scoreOf(photo);
+  return (
+    <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={photo.file_name} onClick={onClose}>
+      <header className="viewer-header" onClick={(event) => event.stopPropagation()}>
+        <div>
+          <strong className="viewer-file-name" title="Имя файла можно выделить и скопировать">
+            {photo.file_name}
+          </strong>
+          <span>
+            {photo.story_title && `${photo.story_title} · `}
+            {label.date}{label.weekday ? ` · ${label.weekday}` : ""}
+          </span>
+        </div>
+        <div className="viewer-position">
+          {photo.favorite && (
+            <span className="viewer-selected"><Check size={14} />Выбрано</span>
+          )}
+          {score != null && <span>Качество <b>{score}</b></span>}
+          <span>{index + 1} / {photos.length}</span>
+        </div>
+        <button onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть просмотр">
+          <X size={21} />
+        </button>
+      </header>
+      <div className="viewer-stage">
+        {!loaded && <LoaderCircle className="viewer-loader spin" size={27} />}
+        <img
+          src={window.ailbum.originalUrl(photo.id)}
+          alt={photo.file_name}
+          onLoad={() => setLoaded(true)}
+          onClick={(event) => event.stopPropagation()}
+        />
+        <button
+          className="viewer-arrow previous"
+          onClick={(event) => { event.stopPropagation(); if (previous) onChange(previous.id); }}
+          disabled={!previous}
+          title="Предыдущее фото (←)"
+          aria-label="Предыдущее фото"
+        >
+          <ChevronLeft size={28} />
+        </button>
+        <button
+          className="viewer-arrow next"
+          onClick={(event) => { event.stopPropagation(); if (next) onChange(next.id); }}
+          disabled={!next}
+          title="Следующее фото (→)"
+          aria-label="Следующее фото"
+        >
+          <ChevronRight size={28} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SelectionTray({
   photos,
   target,
   pending,
   onRemove,
+  onJump,
 }: {
   photos: Photo[];
   target: number;
   pending: Set<number>;
   onRemove(photo: Photo): void;
+  onJump(photo: Photo): void;
 }) {
   const progress = Math.min(100, Math.round((photos.length / target) * 100));
   const stripRef = useRef<HTMLDivElement>(null);
@@ -519,9 +1196,17 @@ function SelectionTray({
         )}
         {photos.map((photo, index) => (
           <div className="selected-thumb" key={photo.id}>
-            <img src={window.ailbum.mediaUrl(photo.id)} alt="" loading="lazy" decoding="async" />
-            <span className="thumb-index">{index + 1}</span>
             <button
+              className={`thumb-jump${isPortraitPhoto(photo) ? " portrait" : ""}`}
+              onClick={() => onJump(photo)}
+              title={`Перейти к сюжету: ${photo.story_title || "Без названия"}`}
+              aria-label={`Перейти к ${photo.file_name} в сетке`}
+            >
+              <img src={window.ailbum.mediaUrl(photo.id)} alt="" loading="lazy" decoding="async" />
+              <span className="thumb-index">{index + 1}</span>
+            </button>
+            <button
+              className="thumb-remove"
               onClick={() => onRemove(photo)}
               disabled={pending.has(photo.id)}
               title="Убрать из выбранного"
