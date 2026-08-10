@@ -152,6 +152,8 @@ class PipelineConfig:
     photo_hist_similarity: float = 0.72
     photo_geometric_similarity: float | None = 0.55
     geometric_max_features: int = 4000
+    geometric_neighbor_window: int = 12
+    geometric_time_window_minutes: int = 15
     face_similarity: float | None = None
     min_face_size: int = 40
     min_attribute_face_size: int = 64
@@ -161,6 +163,8 @@ class PipelineConfig:
     clip_model: str = "openai/clip-vit-base-patch32"
     semantic_threshold: float = 0.15
     semantic_top_k: int = 3
+    semantic_batch_size: int = 8
+    semantic_device: str = "auto"
     story_gap_minutes: int = 120
     story_continuity_minutes: int = 360
     story_max_duration_hours: int = 12
@@ -171,3 +175,5 @@ class PipelineConfig:
     story_vlm_images: int = 4
     story_vlm_timeout: float = 90.0
     models_dir: Path = Path("models")
+    feature_cache: bool = True
+    feature_cache_dir: Path | None = None

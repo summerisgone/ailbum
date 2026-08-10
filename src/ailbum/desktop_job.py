@@ -71,8 +71,9 @@ def _pipeline_config(raw: dict[str, Any] | None) -> PipelineConfig:
     values = raw or {}
     allowed = {field.name for field in fields(PipelineConfig)}
     filtered = {key: value for key, value in values.items() if key in allowed}
-    if "models_dir" in filtered:
-        filtered["models_dir"] = Path(filtered["models_dir"])
+    for key in ("models_dir", "feature_cache_dir"):
+        if filtered.get(key) is not None:
+            filtered[key] = Path(filtered[key])
     return PipelineConfig(**filtered)
 
 

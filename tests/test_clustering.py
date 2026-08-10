@@ -3,6 +3,7 @@ import numpy as np
 
 from ailbum.cv.clustering import UnionFind, cluster_cosine
 from ailbum.cv.similarity import (
+    GeometricSimilarity,
     cluster_similar_photos,
     compare_photo_features,
     extract_photo_features,
@@ -86,3 +87,27 @@ def test_geometric_similarity_groups_rotated_scene_when_phash_does_not() -> None
     assert similarity.geometric.score > 0.8
     assert similarity.geometric.inliers > 100
     assert cluster_similar_photos(features, -1, 2.0, 0.55) == [[0, 1]]
+
+
+def test_geometric_matching_is_limited_to_nearby_photos(monkeypatch) -> None:
+    image = np.full((64, 64, 3), 128, dtype=np.uint8)
+    features = [extract_photo_features(image, include_geometric=False) for _ in range(5)]
+    calls = 0
+
+    def similar(*_args, **_kwargs) -> GeometricSimilarity:
+        nonlocal calls
+        calls += 1
+        return GeometricSimilarity(1.0, 10, 10, 1.0, 1.0, 1.0)
+
+    monkeypatch.setattr("ailbum.cv.similarity.geometric_scene_similarity", similar)
+    groups = cluster_similar_photos(
+        features,
+        hash_distance=-1,
+        histogram_threshold=2.0,
+        geometric_threshold=0.55,
+        geometric_neighbor_window=1,
+        geometric_time_window_minutes=15,
+    )
+
+    assert groups == [[0, 1, 2, 3, 4]]
+    assert calls == 4

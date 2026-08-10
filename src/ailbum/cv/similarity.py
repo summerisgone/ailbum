@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from math import exp, sqrt
 
 import cv2
@@ -107,12 +108,16 @@ def extract_photo_features(
     geometric_max_features: int = 4000,
     geometric_max_image_side: int = 1600,
     include_geometric: bool = True,
+    hash_color_image: np.ndarray | None = None,
+    geometric_image: np.ndarray | None = None,
 ) -> PhotoFeatures:
-    phash, histogram = extract_hash_color_features(image)
+    phash, histogram = extract_hash_color_features(
+        hash_color_image if hash_color_image is not None else image
+    )
     geometric = None
     if include_geometric:
         geometric = extract_geometric_features(
-            image,
+            geometric_image if geometric_image is not None else image,
             max_features=geometric_max_features,
             max_image_side=geometric_max_image_side,
         )
@@ -239,7 +244,18 @@ def cluster_similar_photos(
     hash_distance: int,
     histogram_threshold: float,
     geometric_threshold: float | None = 0.55,
+    *,
+    capture_times: list[str | None] | None = None,
+    geometric_neighbor_window: int = 12,
+    geometric_time_window_minutes: int = 15,
 ) -> list[list[int]]:
+    if geometric_neighbor_window < 1:
+        raise ValueError("Geometric neighbor window must be positive")
+    if geometric_time_window_minutes < 1:
+        raise ValueError("Geometric time window must be positive")
+    if capture_times is not None and len(capture_times) != len(features):
+        raise ValueError("Capture times must match the number of photo features")
+    timestamps = [_timestamp(value) for value in capture_times] if capture_times else None
     groups = UnionFind(len(features))
     for left in range(len(features)):
         for right in range(left + 1, len(features)):
@@ -259,12 +275,43 @@ def cluster_similar_photos(
                 hash_value, color_value
             ):
                 continue
+            if not _within_geometric_window(
+                left,
+                right,
+                timestamps,
+                geometric_neighbor_window,
+                geometric_time_window_minutes,
+            ):
+                continue
             geometric = geometric_scene_similarity(
                 left_feature.geometric, right_feature.geometric
             )
             if geometric.score >= geometric_threshold:
                 groups.union(left, right)
     return groups.components()
+
+
+def _within_geometric_window(
+    left: int,
+    right: int,
+    timestamps: list[float | None] | None,
+    neighbor_window: int,
+    time_window_minutes: int,
+) -> bool:
+    if right - left <= neighbor_window:
+        return True
+    if timestamps is None or timestamps[left] is None or timestamps[right] is None:
+        return False
+    return abs(timestamps[right] - timestamps[left]) <= time_window_minutes * 60
+
+
+def _timestamp(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except (ValueError, OSError, OverflowError):
+        return None
 
 
 def _keypoint_coverage(points: np.ndarray, width: int, height: int) -> float:

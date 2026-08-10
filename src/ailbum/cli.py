@@ -45,6 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="отключить геометрическое сравнение SIFT/RANSAC",
     )
     analyze.add_argument("--geometric-max-features", type=int, default=4000)
+    analyze.add_argument("--geometric-neighbor-window", type=int, default=12)
+    analyze.add_argument("--geometric-time-window-minutes", type=int, default=15)
     analyze.add_argument("--face-similarity", type=float, default=None)
     analyze.add_argument("--min-face-size", type=int, default=40)
     analyze.add_argument(
@@ -67,6 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("--semantic-threshold", type=float, default=0.15)
     analyze.add_argument("--semantic-top-k", type=int, default=3)
+    analyze.add_argument("--semantic-batch-size", type=int, default=8)
+    analyze.add_argument(
+        "--semantic-device",
+        choices=("auto", "cpu", "mps", "cuda"),
+        default="auto",
+        help="устройство CLIP; auto предпочитает MPS/CUDA и откатывается на CPU",
+    )
     analyze.add_argument(
         "--story-gap-minutes",
         type=int,
@@ -102,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--story-vlm-images", type=int, default=4)
     analyze.add_argument("--story-vlm-timeout", type=float, default=90.0)
     analyze.add_argument("--models-dir", type=Path, default=Path("models"))
+    analyze.add_argument("--feature-cache-dir", type=Path, default=None)
+    analyze.add_argument(
+        "--no-feature-cache",
+        action="store_true",
+        help="не использовать кэш CV-признаков по SHA-256",
+    )
     analyze.add_argument(
         "--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"), help="путь к SQLite"
     )
@@ -292,6 +307,8 @@ def main(argv: list[str] | None = None) -> None:
                 None if args.no_geometric_similarity else args.photo_geometric_similarity
             ),
             geometric_max_features=args.geometric_max_features,
+            geometric_neighbor_window=args.geometric_neighbor_window,
+            geometric_time_window_minutes=args.geometric_time_window_minutes,
             face_similarity=args.face_similarity,
             min_face_size=args.min_face_size,
             min_attribute_face_size=args.min_attribute_face_size,
@@ -300,6 +317,8 @@ def main(argv: list[str] | None = None) -> None:
             clip_model=args.clip_model,
             semantic_threshold=args.semantic_threshold,
             semantic_top_k=args.semantic_top_k,
+            semantic_batch_size=args.semantic_batch_size,
+            semantic_device=args.semantic_device,
             story_gap_minutes=args.story_gap_minutes,
             story_continuity_minutes=args.story_continuity_minutes,
             story_max_duration_hours=args.story_max_duration_hours,
@@ -310,6 +329,8 @@ def main(argv: list[str] | None = None) -> None:
             story_vlm_images=args.story_vlm_images,
             story_vlm_timeout=args.story_vlm_timeout,
             models_dir=args.models_dir,
+            feature_cache=not args.no_feature_cache,
+            feature_cache_dir=args.feature_cache_dir,
         )
         manifest = analyze_library(
             args.source,

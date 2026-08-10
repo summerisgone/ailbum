@@ -11,13 +11,16 @@ def analyze_composition(
     image: np.ndarray,
     face_boxes: list[tuple[int, int, int, int]] | None = None,
     max_side: int = 800,
+    analysis_image: np.ndarray | None = None,
 ) -> CompositionRecord:
     """Estimate subject placement and framing on a normalized 0..1 scale."""
     height, width = image.shape[:2]
     subject = _subject_from_faces(face_boxes or [], width, height)
     edge_energy = 0.0
     if subject is None:
-        subject, edge_energy = _subject_from_saliency(image, max_side)
+        subject, edge_energy = _subject_from_saliency(
+            analysis_image if analysis_image is not None else image, max_side
+        )
 
     if subject is None:
         return CompositionRecord(

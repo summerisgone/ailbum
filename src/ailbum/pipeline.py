@@ -12,10 +12,11 @@ import numpy as np
 from ailbum.cv.aesthetics import analyze_color, analyze_composition
 from ailbum.cv.clustering import cluster_cosine
 from ailbum.cv.faces import FaceAnalyzer
-from ailbum.cv.quality import exposure_score, quality_score, sharpness_score
+from ailbum.cv.quality import AnalysisImagePyramid, exposure_score, quality_score, sharpness_score
 from ailbum.cv.semantics import SemanticAnalyzer
 from ailbum.cv.similarity import PhotoFeatures, cluster_similar_photos, extract_photo_features
 from ailbum.database import new_run_id, save_analysis
+from ailbum.feature_cache import FeatureCache, cache_signature
 from ailbum.io import discover_images, load_image, relative_paths
 from ailbum.metadata import ImageMetadata, collect_image_metadata
 from ailbum.models import (
@@ -30,6 +31,54 @@ from ailbum.stories import StoryPhoto, detect_stories
 from ailbum.story_naming import StoryNamer
 
 Progress = Callable[[str], None]
+
+
+def _feature_cache(
+    config: PipelineConfig,
+    output: Path,
+    database: Path | None,
+    face_analyzer: FaceAnalyzer,
+    semantic_analyzer: SemanticAnalyzer,
+) -> FeatureCache | None:
+    if not config.feature_cache:
+        return None
+    root = config.feature_cache_dir
+    if root is None:
+        root = database.parent / "feature-cache" if database else output / ".feature-cache"
+    model_files = []
+    if config.models_dir.exists():
+        model_files = [
+            (path.name, path.stat().st_size, path.stat().st_mtime_ns)
+            for path in sorted(config.models_dir.glob("*.onnx"))
+        ]
+    signature = cache_signature(
+        {
+            "max_image_side": config.max_image_side,
+            "geometric_enabled": config.photo_geometric_similarity is not None,
+            "geometric_max_features": config.geometric_max_features,
+            "face_backend": face_analyzer.backend,
+            "face_models": model_files,
+            "min_face_size": config.min_face_size,
+            "min_attribute_face_size": config.min_attribute_face_size,
+            "semantic_backend": semantic_analyzer.backend,
+            "semantic_model": semantic_analyzer.model_name,
+            "semantic_threshold": config.semantic_threshold,
+            "semantic_top_k": config.semantic_top_k,
+        }
+    )
+    return FeatureCache(root, signature)
+
+
+def _append_face_features(
+    record_index: int,
+    record: PhotoRecord,
+    face_features: list[tuple[int, int, np.ndarray]],
+) -> None:
+    for face_index, face in enumerate(record.faces):
+        if face.embedding is not None:
+            face_features.append(
+                (record_index, face_index, np.asarray(face.embedding, dtype=np.float32))
+            )
 
 
 def analyze_library(
@@ -48,6 +97,12 @@ def analyze_library(
     emit(f"Этап: Подготовка анализа|Найдено фотографий: {len(paths)}")
     display_paths = relative_paths(paths, source)
     output.mkdir(parents=True, exist_ok=True)
+    if config.semantic_batch_size < 1:
+        raise ValueError("Semantic batch size must be positive")
+    if config.geometric_neighbor_window < 1:
+        raise ValueError("Geometric neighbor window must be positive")
+    if config.geometric_time_window_minutes < 1:
+        raise ValueError("Geometric time window must be positive")
 
     emit("Этап: Загрузка моделей|Подготавливаем анализ качества, лиц и содержимого")
     face_analyzer = FaceAnalyzer(
@@ -61,7 +116,9 @@ def analyze_library(
         config.clip_model,
         config.semantic_threshold,
         config.semantic_top_k,
+        device=config.semantic_device,
     )
+    feature_cache = _feature_cache(config, output, database, face_analyzer, semantic_analyzer)
     face_similarity = config.face_similarity
     if face_similarity is None:
         face_similarity = 0.36 if face_analyzer.backend == "dnn" else 0.82
@@ -69,36 +126,78 @@ def analyze_library(
     photo_features: list[PhotoFeatures | None] = []
     face_features: list[tuple[int, int, np.ndarray]] = []
     image_metadata: list[ImageMetadata] = []
+    pending_semantics: list[tuple[int, np.ndarray, str, PhotoFeatures]] = []
+
+    def flush_semantics() -> None:
+        if not pending_semantics:
+            return
+        try:
+            semantic_records = semantic_analyzer.analyze_many(
+                [item[1] for item in pending_semantics]
+            )
+        except Exception as error:  # noqa: BLE001 - semantic inference is non-critical
+            semantic_analyzer.error = f"{type(error).__name__}: {error}"
+            pending_semantics.clear()
+            return
+        for (record_index, _, sha256, features), semantics in zip(
+            pending_semantics, semantic_records, strict=True
+        ):
+            records[record_index].semantics = semantics
+            if feature_cache is not None:
+                feature_cache.store(sha256, records[record_index], features)
+        pending_semantics.clear()
 
     emit("Этап: Анализ фотографий|Метаданные, качество, лица и содержимое")
     for index, path in enumerate(paths, start=1):
         emit(f"[{index}/{len(paths)}] {display_paths[path]}")
         metadata = collect_image_metadata(path, source)
         image_metadata.append(metadata)
+        photo_id = f"photo-{index:05d}"
+        taken_at = metadata.taken_at or metadata.modified_at
+        if feature_cache is not None:
+            cached = feature_cache.load(
+                metadata.sha256,
+                photo_id=photo_id,
+                path=path,
+                taken_at=taken_at,
+                sharpness_threshold=config.sharpness_threshold,
+            )
+            if cached is not None:
+                record, features = cached
+                record_index = len(records)
+                records.append(record)
+                photo_features.append(features)
+                _append_face_features(record_index, record, face_features)
+                continue
         try:
             image = load_image(path)
             height, width = image.shape[:2]
-            sharpness = sharpness_score(image, config.max_image_side)
-            exposure = exposure_score(image)
+            pyramid = AnalysisImagePyramid(image)
+            analysis_image = pyramid.get(config.max_image_side)
+            preview = pyramid.get(800)
+            similarity_preview = pyramid.get(256)
+            sharpness = sharpness_score(analysis_image, config.max_image_side)
+            exposure = exposure_score(preview)
             record = PhotoRecord(
-                photo_id=f"photo-{index:05d}",
+                photo_id=photo_id,
                 path=str(path.resolve()),
                 width=width,
                 height=height,
-                taken_at=metadata.taken_at or metadata.modified_at,
+                taken_at=taken_at,
                 sharpness=round(sharpness, 3),
                 exposure=round(exposure, 4),
                 quality=round(quality_score(sharpness, exposure), 4),
                 is_blurry=sharpness < config.sharpness_threshold,
             )
-            photo_features.append(
-                extract_photo_features(
-                    image,
-                    geometric_max_features=config.geometric_max_features,
-                    geometric_max_image_side=config.max_image_side,
-                    include_geometric=config.photo_geometric_similarity is not None,
-                )
+            features = extract_photo_features(
+                image,
+                geometric_max_features=config.geometric_max_features,
+                geometric_max_image_side=config.max_image_side,
+                include_geometric=config.photo_geometric_similarity is not None,
+                hash_color_image=similarity_preview,
+                geometric_image=analysis_image,
             )
+            photo_features.append(features)
             for face_index, analysis in enumerate(face_analyzer.analyze(image), start=1):
                 detection = analysis.detection
                 embedding = analysis.embedding
@@ -135,28 +234,27 @@ def analyze_library(
                         expression=expression,
                     )
                 )
-                face_features.append(
-                    (len(records), face_index - 1, np.asarray(embedding, dtype=np.float32))
-                )
             record.composition = analyze_composition(
-                image, [face.bbox for face in record.faces]
+                image,
+                [face.bbox for face in record.faces],
+                analysis_image=preview,
             )
-            record.color = analyze_color(image)
-            try:
-                record.semantics = semantic_analyzer.analyze(image)
-            except Exception as error:  # noqa: BLE001 - semantic inference is non-critical
-                semantic_analyzer.error = f"{type(error).__name__}: {error}"
-                record.semantics = None
+            record.color = analyze_color(preview)
+            record_index = len(records)
             records.append(record)
+            _append_face_features(record_index, record, face_features)
+            pending_semantics.append((record_index, preview, metadata.sha256, features))
+            if len(pending_semantics) >= config.semantic_batch_size:
+                flush_semantics()
         # Continue a large import while making a corrupt file or backend failure visible.
         except Exception as error:  # noqa: BLE001
             records.append(
                 PhotoRecord(
-                    photo_id=f"photo-{index:05d}",
+                    photo_id=photo_id,
                     path=str(path.resolve()),
                     width=0,
                     height=0,
-                    taken_at=metadata.taken_at or metadata.modified_at,
+                    taken_at=taken_at,
                     sharpness=0.0,
                     exposure=0.0,
                     quality=0.0,
@@ -166,6 +264,8 @@ def analyze_library(
             )
             photo_features.append(None)
 
+    flush_semantics()
+
     emit("Этап: Поиск похожих кадров|Группируем дубли и серии")
     valid_indices = [index for index, feature in enumerate(photo_features) if feature is not None]
     groups = cluster_similar_photos(
@@ -173,6 +273,9 @@ def analyze_library(
         config.photo_hash_distance,
         config.photo_hist_similarity,
         config.photo_geometric_similarity,
+        capture_times=[records[index].taken_at for index in valid_indices],
+        geometric_neighbor_window=config.geometric_neighbor_window,
+        geometric_time_window_minutes=config.geometric_time_window_minutes,
     )
     similar_groups: list[dict[str, object]] = []
     for cluster_id, local_group in enumerate(groups, start=1):
@@ -277,6 +380,16 @@ def analyze_library(
     for record in records:
         record.story_id = story_by_photo[record.photo_id]
 
+    config_payload = asdict(config)
+    config_payload["models_dir"] = str(config.models_dir)
+    config_payload["feature_cache_dir"] = (
+        str(config.feature_cache_dir) if config.feature_cache_dir is not None else None
+    )
+    cache_stats = (
+        feature_cache.stats()
+        if feature_cache is not None
+        else {"enabled": False, "hits": 0, "misses": 0, "writes": 0, "error": None}
+    )
     manifest: dict[str, object] = {
         "schema_version": 6,
         "run_id": new_run_id(),
@@ -289,15 +402,16 @@ def analyze_library(
         "semantic_backend": semantic_analyzer.backend,
         "semantic_model": semantic_analyzer.model_name if semantic_analyzer.available else None,
         "semantic_error": semantic_analyzer.error,
+        "semantic_device": semantic_analyzer.device,
+        "feature_cache": cache_stats,
         "story_naming_backend": story_namer.backend,
         "story_naming_model": (
             story_namer.model if story_namer.backend == "lmstudio" else None
         ),
         "story_naming_error": story_namer.error,
         "config": {
-            **asdict(config),
+            **config_payload,
             "face_similarity": face_similarity,
-            "models_dir": str(config.models_dir),
         },
         "summary": {
             "photos": len(records),
@@ -323,6 +437,7 @@ def analyze_library(
                 record.semantics is not None and bool(record.semantics.scenes)
                 for record in records
             ),
+            "feature_cache_hits": cache_stats["hits"],
         },
         "similar_groups": similar_groups,
         "people_groups": [person.to_dict() for person in people],

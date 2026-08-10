@@ -60,18 +60,29 @@ OBJECT_PROMPTS = {
 class SemanticAnalyzer:
     """Optional local CLIP scorer loaded lazily through Transformers."""
 
-    def __init__(self, backend: str, model_name: str, threshold: float, top_k: int) -> None:
+    def __init__(
+        self,
+        backend: str,
+        model_name: str,
+        threshold: float,
+        top_k: int,
+        device: str = "auto",
+    ) -> None:
         if backend not in {"auto", "clip", "off"}:
             raise ValueError(f"Unsupported semantic backend: {backend}")
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("Semantic threshold must be between 0 and 1")
         if top_k < 1:
             raise ValueError("Semantic top-k must be at least 1")
+        if device not in {"auto", "cpu", "mps", "cuda"}:
+            raise ValueError(f"Unsupported semantic device: {device}")
         self.requested_backend = backend
         self.model_name = model_name
         self.threshold = threshold
         self.top_k = top_k
         self.backend = "off"
+        self.device = "cpu"
+        self.requested_device = device
         self.error: str | None = None
         self._torch: Any = None
         self._processor: Any = None
@@ -86,10 +97,18 @@ class SemanticAnalyzer:
             self._processor = AutoProcessor.from_pretrained(model_name)
             self._model = AutoModelForZeroShotImageClassification.from_pretrained(model_name)
             self._model.eval()
+            self.device = self._select_device(device)
+            try:
+                self._model.to(self.device)
+            except Exception:
+                if device != "auto" or self.device == "cpu":
+                    raise
+                self.device = "cpu"
+                self._model.to(self.device)
             self.backend = "clip"
         except Exception as error:
             self.error = f"{type(error).__name__}: {error}"
-            if backend == "clip":
+            if backend == "clip" or device != "auto":
                 raise RuntimeError(
                     "CLIP backend is unavailable. Install the 'ml' extra and make sure the "
                     f"model can be loaded: {model_name}"
@@ -100,25 +119,60 @@ class SemanticAnalyzer:
         return self.backend == "clip"
 
     def analyze(self, image: np.ndarray) -> SemanticRecord:
+        return self.analyze_many([image])[0]
+
+    def analyze_many(self, images: list[np.ndarray]) -> list[SemanticRecord]:
+        if not images:
+            return []
         if not self.available:
-            return SemanticRecord(aesthetic_score=None, model=None)
+            return [SemanticRecord(aesthetic_score=None, model=None) for _ in images]
         prompts = [
             *AESTHETIC_PROMPTS,
             *SCENE_PROMPTS.values(),
             *OBJECT_PROMPTS.values(),
         ]
-        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        rgb_images = [Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)) for image in images]
         inputs = self._processor(
             text=prompts,
-            images=Image.fromarray(rgb),
+            images=rgb_images,
             return_tensors="pt",
             padding=True,
         )
+        try:
+            outputs = self._infer(inputs)
+        except RuntimeError:
+            if self.requested_device != "auto" or self.device == "cpu":
+                raise
+            self.device = "cpu"
+            self._model.to(self.device)
+            outputs = self._infer(inputs)
+        logits = outputs.logits_per_image.detach().float().cpu().numpy()
+        embeddings = outputs.image_embeds.detach().float().cpu().numpy()
+        embeddings /= np.maximum(np.linalg.norm(embeddings, axis=1, keepdims=True), 1e-12)
+        return [
+            self._record(logit_row, embedding)
+            for logit_row, embedding in zip(logits, embeddings, strict=True)
+        ]
+
+    def _select_device(self, requested: str) -> str:
+        if requested != "auto":
+            if requested == "mps" and not self._torch.backends.mps.is_available():
+                raise RuntimeError("MPS is unavailable")
+            if requested == "cuda" and not self._torch.cuda.is_available():
+                raise RuntimeError("CUDA is unavailable")
+            return requested
+        if self._torch.backends.mps.is_available():
+            return "mps"
+        if self._torch.cuda.is_available():
+            return "cuda"
+        return "cpu"
+
+    def _infer(self, inputs: Any) -> Any:
+        inputs = inputs.to(self.device)
         with self._torch.inference_mode():
-            outputs = self._model(**inputs)
-            logits = outputs.logits_per_image[0].detach().float().cpu().numpy()
-            embedding = outputs.image_embeds[0].detach().float().cpu().numpy()
-        embedding /= max(float(np.linalg.norm(embedding)), 1e-12)
+            return self._model(**inputs)
+
+    def _record(self, logits: np.ndarray, embedding: np.ndarray) -> SemanticRecord:
         aesthetic = _softmax(logits[:2])
         scene_start = 2
         object_start = scene_start + len(SCENE_PROMPTS)

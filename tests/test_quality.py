@@ -2,7 +2,20 @@ import cv2
 import numpy as np
 
 from ailbum.cv.aesthetics import analyze_color, analyze_composition
-from ailbum.cv.quality import exposure_score, sharpness_score
+from ailbum.cv.quality import AnalysisImagePyramid, exposure_score, sharpness_score
+
+
+def test_analysis_image_pyramid_reuses_downscaled_images() -> None:
+    image = np.zeros((1200, 1600, 3), dtype=np.uint8)
+    pyramid = AnalysisImagePyramid(image)
+
+    large = pyramid.get(800)
+    small = pyramid.get(256)
+
+    assert large is pyramid.get(800)
+    assert small is pyramid.get(256)
+    assert large.shape[:2] == (600, 800)
+    assert small.shape[:2] == (192, 256)
 
 
 def test_sharpness_separates_detailed_and_blurred_images() -> None:

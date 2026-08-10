@@ -66,3 +66,27 @@ def test_pipeline_writes_manifest_and_selects_best_of_duplicates(tmp_path: Path)
         columns = {row[1] for row in connection.execute("PRAGMA table_info(photo_analysis)")}
         assert {"aesthetic_score", "rule_of_thirds", "scene_tags_json", "story_id"} <= columns
         assert connection.execute("SELECT COUNT(*) FROM stories").fetchone()[0] == 1
+
+
+def test_pipeline_reuses_feature_cache_by_content_hash(tmp_path: Path) -> None:
+    source = tmp_path / "photos"
+    source.mkdir()
+    image = np.zeros((160, 200, 3), dtype=np.uint8)
+    cv2.circle(image, (100, 80), 45, (20, 180, 240), -1)
+    _write_rgb(source / "sample.jpg", image)
+    config = PipelineConfig(
+        face_backend="classic",
+        semantic_backend="off",
+        story_naming_backend="rules",
+        models_dir=tmp_path / "models",
+        feature_cache_dir=tmp_path / "feature-cache",
+    )
+
+    first = analyze_library(source, tmp_path / "first", config)
+    second = analyze_library(source, tmp_path / "second", config)
+
+    assert first["feature_cache"]["writes"] == 1  # type: ignore[index]
+    assert first["feature_cache"]["hits"] == 0  # type: ignore[index]
+    assert second["feature_cache"]["hits"] == 1  # type: ignore[index]
+    assert second["summary"]["feature_cache_hits"] == 1  # type: ignore[index]
+    assert second["photos"] == first["photos"]

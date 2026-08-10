@@ -1,7 +1,36 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 import cv2
 import numpy as np
+
+
+@dataclass(slots=True)
+class AnalysisImagePyramid:
+    """Lazily build and reuse proportional downscales of one decoded image."""
+
+    original: np.ndarray
+    _images: dict[int, np.ndarray] = field(default_factory=dict, init=False, repr=False)
+
+    def get(self, max_side: int) -> np.ndarray:
+        if max_side < 1:
+            raise ValueError("Analysis image size must be positive")
+        if max_side in self._images:
+            return self._images[max_side]
+        candidates = [
+            image
+            for image in (self.original, *self._images.values())
+            if max(image.shape[:2]) >= max_side
+        ]
+        source = (
+            min(candidates, key=lambda image: max(image.shape[:2]))
+            if candidates
+            else self.original
+        )
+        resized, _ = resize_for_analysis(source, max_side)
+        self._images[max_side] = resized
+        return resized
 
 
 def resize_for_analysis(image: np.ndarray, max_side: int) -> tuple[np.ndarray, float]:
@@ -33,4 +62,3 @@ def quality_score(sharpness: float, exposure: float) -> float:
     # Log compression keeps one extremely detailed photo from dominating a burst.
     sharp_component = min(np.log1p(max(sharpness, 0.0)) / np.log1p(1000.0), 1.0)
     return float(0.8 * sharp_component + 0.2 * exposure)
-

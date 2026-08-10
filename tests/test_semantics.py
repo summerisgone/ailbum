@@ -14,6 +14,17 @@ def test_disabled_semantic_backend_returns_empty_record() -> None:
     assert result.objects == []
 
 
+def test_disabled_semantic_backend_supports_batches() -> None:
+    analyzer = SemanticAnalyzer("off", "unused", threshold=0.15, top_k=3)
+
+    results = analyzer.analyze_many(
+        [np.zeros((10, 10, 3), dtype=np.uint8), np.ones((8, 12, 3), dtype=np.uint8)]
+    )
+
+    assert len(results) == 2
+    assert all(result.aesthetic_score is None for result in results)
+
+
 def test_semantic_tags_respect_threshold_and_top_k() -> None:
     tags = _rank_tags(("first", "second", "third"), np.array([3.0, 2.0, 0.0]), 0.1, 2)
 
