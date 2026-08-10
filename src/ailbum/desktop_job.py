@@ -97,7 +97,12 @@ def run_index(database: Path, sources: list[Path]) -> dict[str, object]:
     return {"sources": summaries}
 
 
-def run_analysis(database: Path, source: Path | None, output: Path | None) -> dict[str, object]:
+def run_analysis(
+    database: Path,
+    source: Path | None,
+    output: Path | None,
+    models_dir: Path | None = None,
+) -> dict[str, object]:
     previous = _latest_analysis(database)
     actual_source = source or (Path(previous["source"]) if previous else None)
     if actual_source is None:
@@ -107,10 +112,13 @@ def run_analysis(database: Path, source: Path | None, output: Path | None) -> di
         if previous and source is None
         else database.parent / "analysis-output"
     )
+    config = _pipeline_config(previous["config"] if previous else None)
+    if models_dir is not None:
+        config.models_dir = models_dir
     manifest = analyze_library(
         actual_source,
         actual_output,
-        _pipeline_config(previous["config"] if previous else None),
+        config,
         recursive=True,
         progress=progress,
         database=database,
@@ -124,6 +132,7 @@ def main() -> None:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--models-dir", type=Path)
     args = parser.parse_args()
     try:
         if args.kind == "index":
@@ -137,6 +146,7 @@ def main() -> None:
                 args.database,
                 args.source[0] if args.source else None,
                 args.output,
+                args.models_dir,
             )
         emit({"type": "complete", "result": result})
     except Exception as error:

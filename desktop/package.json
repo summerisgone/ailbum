@@ -1,13 +1,76 @@
 {
   "name": "ailbum-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Fast local photo selection UI for Ailbum",
+  "author": "Ailbum contributors",
+  "license": "MIT",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k -s first \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env AILBUM_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "tsc --noEmit && vite build",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder",
+    "package:msi": "npm run build && electron-builder --win msi",
+    "package:dmg": "npm run build && electron-builder --mac dmg",
+    "package:deb": "npm run build && electron-builder --linux deb"
+  },
+  "build": {
+    "appId": "io.github.ailbum.desktop",
+    "productName": "Ailbum",
+    "executableName": "ailbum",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/backend/ailbum-backend",
+        "to": "backend"
+      },
+      {
+        "from": "models",
+        "to": "models",
+        "filter": [
+          "*.onnx"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.photography",
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "${productName} ${version}"
+    },
+    "win": {
+      "target": [
+        "msi"
+      ]
+    },
+    "msi": {
+      "upgradeCode": "{3B1F532E-D4A7-4B65-9E2D-885573D7B4A4}",
+      "oneClick": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": false
+    },
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Graphics",
+      "synopsis": "Local photo selection and album curation",
+      "maintainer": "Ailbum contributors <noreply@users.noreply.github.com>"
+    }
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -21,7 +84,8 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^34.0.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.11",
     "wait-on": "^8.0.1"

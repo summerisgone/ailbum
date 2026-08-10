@@ -23,6 +23,7 @@ ml = [
   "transformers>=4.45,<6",
 ]
 dev = [
+  "pyinstaller>=6.21,<7",
   "pytest>=8,<10",
   "ruff>=0.9,<1",
 ]

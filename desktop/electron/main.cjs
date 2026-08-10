@@ -13,9 +13,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const projectRoot = path.resolve(__dirname, "../..");
-let databasePath = path.resolve(
-  process.env.AILBUM_DATABASE || path.join(projectRoot, ".ailbum/ailbum.sqlite3"),
-);
+let databasePath;
 let bridge;
 let mainWindow;
 let activeJob;
@@ -34,14 +32,53 @@ function pythonExecutable() {
   return candidates.find((candidate) => !path.isAbsolute(candidate) || existsSync(candidate));
 }
 
+function initializeRuntimePaths() {
+  const defaultDatabase = app.isPackaged
+    ? path.join(app.getPath("userData"), "ailbum.sqlite3")
+    : path.join(projectRoot, ".ailbum/ailbum.sqlite3");
+  databasePath = path.resolve(process.env.AILBUM_DATABASE || defaultDatabase);
+}
+
+function backendInvocation(mode, moduleName, args) {
+  if (app.isPackaged) {
+    const executable = path.join(
+      process.resourcesPath,
+      "backend",
+      process.platform === "win32" ? "ailbum-backend.exe" : "ailbum-backend",
+    );
+    return {
+      executable,
+      args: [mode, ...args],
+      cwd: app.getPath("userData"),
+    };
+  }
+  return {
+    executable: pythonExecutable(),
+    args: ["-m", moduleName, ...args],
+    cwd: projectRoot,
+  };
+}
+
+function runtimeModelsPath() {
+  if (process.env.AILBUM_MODELS_DIR) return path.resolve(process.env.AILBUM_MODELS_DIR);
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "models")
+    : path.join(projectRoot, "models");
+}
+
 class PythonBridge {
   constructor(database) {
     this.nextId = 1;
     this.pending = new Map();
+    const invocation = backendInvocation(
+      "bridge",
+      "ailbum.desktop_bridge",
+      ["--database", database],
+    );
     this.process = spawn(
-      pythonExecutable(),
-      ["-m", "ailbum.desktop_bridge", "--database", database],
-      { cwd: projectRoot, stdio: ["pipe", "pipe", "pipe"] },
+      invocation.executable,
+      invocation.args,
+      { cwd: invocation.cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
     );
     const lines = readline.createInterface({ input: this.process.stdout });
     lines.on("line", (line) => this.handleLine(line));
@@ -241,11 +278,13 @@ function publishJob(update) {
 
 function startDatabaseJob(kind, sources = []) {
   if (activeJob) throw new Error("Уже выполняется добавление или анализ фотографий");
-  const args = ["-m", "ailbum.desktop_job", kind, "--database", databasePath];
+  const args = [kind, "--database", databasePath, "--models-dir", runtimeModelsPath()];
   for (const source of sources) args.push("--source", path.resolve(source));
-  const process = spawn(pythonExecutable(), args, {
-    cwd: projectRoot,
+  const invocation = backendInvocation("job", "ailbum.desktop_job", args);
+  const process = spawn(invocation.executable, invocation.args, {
+    cwd: invocation.cwd,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   activeJob = process;
   let reportedError;
@@ -305,6 +344,7 @@ function startDatabaseJob(kind, sources = []) {
 }
 
 app.whenReady().then(() => {
+  initializeRuntimePaths();
   startBridge();
   if (process.env.AILBUM_SCREENSHOT_JOB) {
     jobState = {
