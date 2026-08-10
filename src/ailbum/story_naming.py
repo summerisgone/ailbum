@@ -13,28 +13,6 @@ from PIL import Image, ImageOps
 
 from ailbum.models import StoryRecord
 
-_TITLE_HINTS = {
-    "beach": ("пляж", "побереж", "у моря", "морской"),
-    "night": ("ноч", "вечер", "лун"),
-    "food": ("ед", "стол", "ужин", "обед", "завтрак", "ресторан", "бар", "морепродукт"),
-    "restaurant": ("ресторан", "кафе", "бар", "стол"),
-    "transport": ("дорог", "поезд", "автобус", "машин", "автомоб", "самол", "аэропорт"),
-    "city": ("город", "улиц"),
-    "architecture": ("архитект", "здани", "храм", "дворец"),
-    "nature": ("природ", "лес", "парк", "озер", "прогул"),
-    "mountains": ("горах", "горы", "горн", "скал"),
-    "indoor": ("помещен", "комнат", "отел"),
-    "party": ("празд", "вечерин", "день рождения"),
-    "ceremony": ("церемон", "свад", "выпуск"),
-    "performance": ("концерт", "выступ", "шоу"),
-    "portrait_session": ("портрет", "фотосесс", "съёмк"),
-    "swimming": ("купан", "плаван", "дайв"),
-    "people": ("люд", "друз", "сем", "дет", "портрет", "фотосесс", "купан"),
-    "animal": ("живот", "кот", "кош", "собак", "птиц"),
-    "vehicle": ("машин", "автомоб", "автобус", "поезд", "лод", "самол"),
-    "plant": ("растен", "цвет", "дерев"),
-}
-
 
 class StoryNamer:
     """Generate concise Russian story titles with a local LM Studio VLM."""
@@ -66,7 +44,8 @@ class StoryNamer:
         stories: list[StoryRecord],
         photo_paths: dict[str, str],
     ) -> list[StoryRecord]:
-        if self.requested_backend == "rules" or not stories:
+        pending = [story for story in stories if _needs_vlm_title(story.title)]
+        if self.requested_backend == "rules" or not pending:
             return stories
         try:
             self._connect()
@@ -78,16 +57,14 @@ class StoryNamer:
                 ) from error
             return stories
 
-        for story in stories:
+        for story in pending:
             paths = [photo_paths[photo_id] for photo_id in story.photo_ids if photo_id in photo_paths]
             try:
                 title = self._name_story(story, paths)
             except Exception as error:  # noqa: BLE001 - one failed title must not lose a run
                 self.error = f"{type(error).__name__}: {error}"
                 continue
-            if title is not None and _title_score(title, story) >= _title_score(
-                story.title, story
-            ):
+            if title is not None:
                 story.title = title
                 story.naming_model = self.model
         return stories
@@ -211,14 +188,5 @@ def _parse_title(value: Any) -> str | None:
     return title
 
 
-def _title_score(title: str, story: StoryRecord) -> float:
-    lowered = title.casefold()
-    if lowered.startswith(("событие", "фотоистория", "сюжет", "встреча")):
-        return -10.0
-    labels = story.scene_labels[:8] + story.object_labels[:8]
-    matched = sum(
-        any(hint in lowered for hint in _TITLE_HINTS.get(label, ()))
-        for label in dict.fromkeys(labels)
-    )
-    word_bonus = min(0.5, len(title.split()) * 0.1)
-    return matched + word_bonus
+def _needs_vlm_title(title: str) -> bool:
+    return title.startswith(("Фотографии ", "Совместный отдых"))

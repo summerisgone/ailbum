@@ -1,6 +1,6 @@
 import numpy as np
 
-from ailbum.cv.semantics import SemanticAnalyzer, _rank_tags
+from ailbum.cv.semantics import OBJECT_PROMPTS, SCENE_PROMPTS, SemanticAnalyzer, _rank_tags
 
 
 def test_disabled_semantic_backend_returns_empty_record() -> None:
@@ -19,3 +19,26 @@ def test_semantic_tags_respect_threshold_and_top_k() -> None:
 
     assert [tag.label for tag in tags] == ["first", "second"]
     assert tags[0].confidence > tags[1].confidence
+
+
+def test_semantic_taxonomy_includes_hookah_as_activity_and_object() -> None:
+    assert "hookah" in SCENE_PROMPTS
+    assert "hookah" in OBJECT_PROMPTS
+    assert "hoses" in SCENE_PROMPTS["hookah"]
+    assert "glass base" in OBJECT_PROMPTS["hookah"]
+
+
+def test_semantic_taxonomy_distinguishes_user_story_types() -> None:
+    assert {
+        "hotel_lobby",
+        "waterpark",
+        "pool",
+        "diving",
+        "seaside_photo_session",
+        "water_sports",
+        "dinner",
+        "night_sky",
+        "boat_trip",
+        "mountain_trip",
+        "hotel_exterior",
+    } <= SCENE_PROMPTS.keys()

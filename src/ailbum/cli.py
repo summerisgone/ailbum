@@ -21,6 +21,7 @@ from ailbum.model_download import download_models
 from ailbum.models import PipelineConfig
 from ailbum.people import compose_person_faces
 from ailbum.pipeline import analyze_library
+from ailbum.story_evaluation import evaluate_database_stories
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -166,6 +167,13 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("--photo-geometric-similarity", type=float, default=0.55)
     compare.add_argument("--geometric-max-features", type=int, default=4000)
     compare.add_argument("--max-image-side", type=int, default=1600)
+
+    evaluate = commands.add_parser(
+        "evaluate-stories", help="оценить сюжеты по ручной Markdown-разметке"
+    )
+    evaluate.add_argument("annotations", type=Path)
+    evaluate.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    evaluate.add_argument("--run-id")
     return parser
 
 
@@ -187,6 +195,17 @@ def main(argv: list[str] | None = None) -> None:
                         geometric_threshold=args.photo_geometric_similarity,
                         geometric_max_features=args.geometric_max_features,
                         max_image_side=args.max_image_side,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.command == "evaluate-stories":
+            print(
+                json.dumps(
+                    evaluate_database_stories(
+                        args.database, args.annotations, run_id=args.run_id
                     ),
                     ensure_ascii=False,
                     indent=2,

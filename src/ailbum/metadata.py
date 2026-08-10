@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -76,7 +77,7 @@ def collect_image_metadata(path: Path, source: Path) -> ImageMetadata:
                 height=image.height,
                 frame_count=getattr(image, "n_frames", 1),
                 orientation=_as_int(flattened.get("Orientation")),
-                taken_at=_taken_at(flattened),
+                taken_at=_taken_at(flattened) or _filename_taken_at(resolved.name),
                 camera_make=_as_text(flattened.get("Make")),
                 camera_model=_as_text(flattened.get("Model")),
                 lens_model=_as_text(flattened.get("LensModel")),
@@ -99,7 +100,7 @@ def collect_image_metadata(path: Path, source: Path) -> ImageMetadata:
             height=None,
             frame_count=None,
             orientation=None,
-            taken_at=None,
+            taken_at=_filename_taken_at(resolved.name),
             camera_make=None,
             camera_model=None,
             lens_model=None,
@@ -174,6 +175,8 @@ def _gps_coordinates(gps: dict[str, Any]) -> tuple[float | None, float | None, f
     altitude = _number(gps.get("GPSAltitude"))
     if altitude is not None and _as_int(gps.get("GPSAltitudeRef")) == 1:
         altitude = -altitude
+    if latitude == 0.0 and longitude == 0.0:
+        latitude = longitude = None
     return latitude, longitude, altitude
 
 
@@ -217,6 +220,17 @@ def _taken_at(tags: dict[str, Any]) -> str | None:
     return None
 
 
+def _filename_taken_at(file_name: str) -> str | None:
+    """Read camera-style YYYYMMDD_HHMMSS timestamps when EXIF is absent."""
+    match = re.search(r"(?<!\d)(20\d{6})[_-]?(\d{6})(?!\d)", file_name)
+    if match is None:
+        return None
+    try:
+        return datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S").isoformat()  # noqa: DTZ007
+    except ValueError:
+        return None
+
+
 def _relative_path(path: Path, root: Path) -> str:
     try:
         return str(path.relative_to(root))
@@ -243,4 +257,3 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-

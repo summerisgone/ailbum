@@ -98,6 +98,7 @@ class SemanticRecord:
     model: str | None
     scenes: list[TagRecord] = field(default_factory=list)
     objects: list[TagRecord] = field(default_factory=list)
+    embedding: list[float] | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -139,6 +140,8 @@ class PhotoRecord:
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
         result["faces"] = [face.to_dict() for face in self.faces]
+        if result["semantics"] is not None:
+            result["semantics"].pop("embedding", None)
         return result
 
 

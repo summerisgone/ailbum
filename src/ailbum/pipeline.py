@@ -156,7 +156,7 @@ def analyze_library(
                     path=str(path.resolve()),
                     width=0,
                     height=0,
-                    taken_at=None,
+                    taken_at=metadata.taken_at or metadata.modified_at,
                     sharpness=0.0,
                     exposure=0.0,
                     quality=0.0,
@@ -243,6 +243,11 @@ def analyze_library(
                 objects=tuple(
                     (tag.label, tag.confidence)
                     for tag in (record.semantics.objects if record.semantics else [])
+                ),
+                embedding=(
+                    tuple(record.semantics.embedding)
+                    if record.semantics and record.semantics.embedding
+                    else None
                 ),
                 quality=record.quality,
                 is_blurry=record.is_blurry,

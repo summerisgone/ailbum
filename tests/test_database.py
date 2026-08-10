@@ -14,7 +14,7 @@ from ailbum.database import (
     set_desktop_favorite,
     set_desktop_target,
 )
-from ailbum.metadata import collect_image_metadata
+from ailbum.metadata import _gps_coordinates, collect_image_metadata
 
 
 def _write_image_with_exif(path: Path, taken_at: str = "2026:08:07 12:34:56") -> None:
@@ -43,6 +43,38 @@ def test_collects_paths_hash_and_exif(tmp_path: Path) -> None:
     assert metadata.orientation == 6
     assert metadata.width == 120
     assert metadata.height == 80
+
+
+def test_uses_camera_filename_timestamp_when_exif_is_missing(tmp_path: Path) -> None:
+    source = tmp_path / "photos"
+    source.mkdir()
+    path = source / "20260731_184622.jpg"
+    Image.new("RGB", (120, 80), (20, 100, 180)).save(path)
+
+    metadata = collect_image_metadata(path, source)
+
+    assert metadata.taken_at == "2026-07-31T18:46:22"
+
+
+def test_filename_timestamp_survives_image_extraction_error(tmp_path: Path) -> None:
+    source = tmp_path / "photos"
+    source.mkdir()
+    path = source / "20260804_183527.jpg"
+    path.write_bytes(b"not an image")
+
+    metadata = collect_image_metadata(path, source)
+
+    assert metadata.taken_at == "2026-08-04T18:35:27"
+    assert metadata.extraction_error is not None
+
+
+def test_zero_zero_gps_is_treated_as_missing() -> None:
+    latitude, longitude, _ = _gps_coordinates(
+        {"GPSLatitude": [0, 0, 0], "GPSLongitude": [0, 0, 0]}
+    )
+
+    assert latitude is None
+    assert longitude is None
 
 
 def test_index_library_creates_queryable_catalog(tmp_path: Path) -> None:
@@ -100,7 +132,7 @@ def test_database_v2_faces_are_migrated_without_losing_rows(tmp_path: Path) -> N
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         face_id = connection.execute("SELECT face_id FROM faces").fetchone()[0]
 
-    assert version == 8
+    assert version == 10
     assert face_id == "old-face"
     assert {"left_eye_state", "expression", "smile_probability"} <= columns
 
@@ -135,7 +167,15 @@ def test_database_v5_photo_metrics_are_migrated_without_losing_rows(tmp_path: Pa
             "SELECT photo_id, scene_tags_json FROM photo_analysis"
         ).fetchone()
 
-    assert {"aesthetic_score", "color_harmony", "object_tags_json", "story_id"} <= columns
+    assert {
+        "aesthetic_score",
+        "color_harmony",
+        "object_tags_json",
+        "story_id",
+        "vision_embedding",
+        "vision_embedding_dim",
+        "vision_embedding_model",
+    } <= columns
     assert tuple(row) == ("old-photo", "[]")
 
 
@@ -174,7 +214,7 @@ def test_desktop_library_initializes_manual_selection_from_analysis_once(tmp_pat
     assert library["photos"][0]["auto_selected"] is True  # type: ignore[index]
     assert library["photos"][0]["favorite"] is True  # type: ignore[index]
     assert library["selected_count"] == 1
-    assert library["stories"][0]["title"] == "Сюжет без названия 1"  # type: ignore[index]
+    assert library["stories"][0]["title"] == "Фотографии 07.08, 12:34"  # type: ignore[index]
     assert library["photos"][0]["story_id"] == 1  # type: ignore[index]
 
     set_desktop_favorite(database, "run-1", image_id, False)

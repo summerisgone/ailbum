@@ -4,7 +4,7 @@ from typing import Any
 from PIL import Image
 
 from ailbum.models import StoryRecord
-from ailbum.story_naming import StoryNamer, _parse_title, _title_score
+from ailbum.story_naming import StoryNamer, _parse_title
 
 
 def test_story_namer_uses_local_multimodal_response(
@@ -14,7 +14,7 @@ def test_story_namer_uses_local_multimodal_response(
     Image.new("RGB", (64, 48), (20, 40, 80)).save(photo)
     story = StoryRecord(
         story_id=1,
-        title="Ночной пляж",
+        title="Фотографии 03.08, 21:00",
         photo_ids=["photo-1"],
         started_at=None,
         ended_at=None,
@@ -56,16 +56,35 @@ def test_generic_vlm_title_is_rejected() -> None:
     assert _parse_title('```json\n{"title":"Прогулка у моря"}\n```') == "Прогулка у моря"
 
 
-def test_specific_rule_title_can_beat_weaker_vlm_title() -> None:
+def test_unrelated_vlm_title_does_not_replace_semantic_anchor(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    photo = tmp_path / "evening.jpg"
+    Image.new("RGB", (64, 48), (20, 40, 80)).save(photo)
     story = StoryRecord(
         story_id=1,
-        title="Ночная фотосессия на пляже",
-        photo_ids=[],
+        title="Вечернее шоу и кальян",
+        photo_ids=["photo-1"],
         started_at=None,
         ended_at=None,
         representative_photo_id="photo-1",
-        scene_labels=["night", "beach"],
-        object_labels=["people"],
+        scene_labels=["performance", "hookah", "hotel"],
+        object_labels=["food"],
     )
 
-    assert _title_score(story.title, story) > _title_score("Луна на пляже", story)
+    def fake_request(
+        url: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        timeout: float,
+    ) -> dict[str, Any]:
+        if url.endswith("/models"):
+            return {"data": [{"id": "test-vlm"}]}
+        raise AssertionError("VLM must not be called for an informative title")
+
+    monkeypatch.setattr("ailbum.story_naming._request_json", fake_request)
+
+    StoryNamer(model="test-vlm").refine([story], {"photo-1": str(photo)})
+
+    assert story.title == "Вечернее шоу и кальян"
+    assert story.naming_model is None

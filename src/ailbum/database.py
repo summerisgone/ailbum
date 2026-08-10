@@ -13,12 +13,12 @@ from typing import Any
 
 import numpy as np
 
-from ailbum.metadata import ImageMetadata
+from ailbum.metadata import ImageMetadata, _filename_taken_at
 from ailbum.models import PersonRecord, PhotoRecord, StoryRecord
 from ailbum.stories import STORY_ALGORITHM_VERSION, StoryPhoto, detect_stories
 from ailbum.story_naming import StoryNamer
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -89,6 +89,9 @@ CREATE TABLE IF NOT EXISTS photo_analysis (
     main_subject_json TEXT,
     scene_tags_json TEXT NOT NULL DEFAULT '[]',
     object_tags_json TEXT NOT NULL DEFAULT '[]',
+    vision_embedding BLOB,
+    vision_embedding_dim INTEGER,
+    vision_embedding_model TEXT,
     is_blurry INTEGER NOT NULL CHECK (is_blurry IN (0, 1)),
     similar_cluster INTEGER,
     story_id INTEGER,
@@ -269,9 +272,10 @@ def save_analysis(
                     aesthetic_score, composition_score, rule_of_thirds,
                     frame_occupancy, negative_space, crop_risk, color_balance,
                     color_harmony, main_subject_json, scene_tags_json,
-                    object_tags_json, is_blurry, similar_cluster, story_id,
+                    object_tags_json, vision_embedding, vision_embedding_dim,
+                    vision_embedding_model, is_blurry, similar_cluster, story_id,
                     selected, error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -320,6 +324,15 @@ def save_analysis(
                         if record.semantics is not None
                         else []
                     ),
+                    _encode_embedding(
+                        record.semantics.embedding if record.semantics is not None else None
+                    ),
+                    (
+                        len(record.semantics.embedding)
+                        if record.semantics is not None and record.semantics.embedding
+                        else None
+                    ),
+                    record.semantics.model if record.semantics is not None else None,
                     int(record.is_blurry),
                     record.similar_cluster,
                     record.story_id,
@@ -514,7 +527,8 @@ def _ensure_stories(connection: sqlite3.Connection, run_id: str) -> None:
         """
         SELECT pa.photo_id, pa.image_id, pa.quality, pa.is_blurry,
                pa.scene_tags_json, pa.object_tags_json,
-               COALESCE(i.taken_at, i.modified_at) AS taken_at,
+               pa.vision_embedding, pa.vision_embedding_dim,
+               i.taken_at, i.modified_at, i.file_name,
                i.gps_latitude, i.gps_longitude, i.path
         FROM photo_analysis AS pa
         JOIN images AS i ON i.id = pa.image_id
@@ -547,12 +561,26 @@ def _ensure_stories(connection: sqlite3.Connection, run_id: str) -> None:
     story_photos = [
         StoryPhoto(
             photo_id=str(row["photo_id"]),
-            taken_at=row["taken_at"],
+            taken_at=(
+                row["taken_at"]
+                or _filename_taken_at(str(row["file_name"]))
+                or row["modified_at"]
+            ),
             gps_latitude=row["gps_latitude"],
             gps_longitude=row["gps_longitude"],
             people=frozenset(people_by_image[int(row["image_id"])]),
             scenes=_tag_pairs(row["scene_tags_json"]),
             objects=_tag_pairs(row["object_tags_json"]),
+            embedding=(
+                tuple(
+                    _decode_embedding(
+                        row["vision_embedding"], int(row["vision_embedding_dim"])
+                    ).tolist()
+                )
+                if row["vision_embedding"] is not None
+                and row["vision_embedding_dim"] is not None
+                else None
+            ),
             quality=float(row["quality"] or 0),
             is_blurry=bool(row["is_blurry"]),
         )
@@ -1324,10 +1352,27 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
         "scene_tags_json": "TEXT NOT NULL DEFAULT '[]'",
         "object_tags_json": "TEXT NOT NULL DEFAULT '[]'",
         "story_id": "INTEGER",
+        "vision_embedding": "BLOB",
+        "vision_embedding_dim": "INTEGER",
+        "vision_embedding_model": "TEXT",
     }
     for name, sql_type in analysis_additions.items():
         if name not in analysis_columns:
             connection.execute(f"ALTER TABLE photo_analysis ADD COLUMN {name} {sql_type}")
+    if "clip_embedding" in analysis_columns:
+        connection.execute(
+            """
+            UPDATE photo_analysis
+            SET vision_embedding = COALESCE(vision_embedding, clip_embedding),
+                vision_embedding_dim = COALESCE(
+                    vision_embedding_dim, clip_embedding_dim
+                ),
+                vision_embedding_model = COALESCE(
+                    vision_embedding_model, clip_embedding_model
+                )
+            WHERE clip_embedding IS NOT NULL
+            """
+        )
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_photo_analysis_story
