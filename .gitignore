@@ -6,8 +6,10 @@ __pycache__/
 .ruff_cache/
 dist/
 build/
+desktop/release/
 node_modules/
 output/
 .ailbum/
 models/*.onnx
+desktop/models/*.onnx
 data/
