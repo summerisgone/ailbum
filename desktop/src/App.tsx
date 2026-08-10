@@ -54,7 +54,7 @@ const TIME_FORMAT = new Intl.DateTimeFormat("ru-RU", {
 });
 
 type GridRow =
-  | { kind: "header"; key: string; story: Story; count: number }
+  | { kind: "header"; key: string; story: Story; count: number; selectedCount: number }
   | { kind: "photos"; key: string; items: PhotoGridItem[] };
 
 type PhotoGridItem =
@@ -185,6 +185,16 @@ function App() {
         ),
     [library],
   );
+
+  const selectedCountByStory = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const photo of library?.photos ?? []) {
+      if (!photo.favorite) continue;
+      const storyId = photo.story_id ?? 0;
+      counts.set(storyId, (counts.get(storyId) ?? 0) + 1);
+    }
+    return counts;
+  }, [library?.photos]);
 
   const jumpToPhotoStory = useCallback((photo: Photo) => {
     if (photo.story_id == null) return;
@@ -372,6 +382,7 @@ function App() {
               key={library.run.id}
               photos={photos}
               stories={library.stories}
+              selectedCountByStory={selectedCountByStory}
               pending={pending}
               storyJump={storyJump}
               onToggle={toggleFavorite}
@@ -862,6 +873,7 @@ function columnCount(width: number) {
 function VirtualPhotoGrid({
   photos,
   stories,
+  selectedCountByStory,
   pending,
   storyJump,
   onToggle,
@@ -869,6 +881,7 @@ function VirtualPhotoGrid({
 }: {
   photos: Photo[];
   stories: Story[];
+  selectedCountByStory: Map<number, number>;
   pending: Set<number>;
   storyJump: StoryJump | null;
   onToggle(photo: Photo, favorite: boolean): void;
@@ -903,7 +916,13 @@ function VirtualPhotoGrid({
         photo_count: items.length,
         naming_model: null,
       };
-      result.push({ kind: "header", key: `header-${storyId}`, story, count: items.length });
+      result.push({
+        kind: "header",
+        key: `header-${storyId}`,
+        story,
+        count: story.photo_count,
+        selectedCount: selectedCountByStory.get(storyId) ?? 0,
+      });
 
       const series = new Map<number, Photo[]>();
       for (const photo of items) {
@@ -958,7 +977,7 @@ function VirtualPhotoGrid({
       }
     }
     return result;
-  }, [photos, stories, columns, expandedSeries]);
+  }, [photos, stories, selectedCountByStory, columns, expandedSeries]);
 
   const layout = useMemo(() => {
     const offsets: number[] = [];
@@ -1036,8 +1055,18 @@ function VirtualPhotoGrid({
                 style={style}
                 key={row.key}
               >
-                <div><strong>{row.story.title}</strong><span>{storyPeriodLabel(row.story)}</span></div>
-                <span>{row.count} фото</span>
+                <div className="story-heading">
+                  <strong>{row.story.title}</strong>
+                  <span>{storyPeriodLabel(row.story)}</span>
+                </div>
+                <div
+                  className="story-counts"
+                  data-has-selection={row.selectedCount > 0}
+                  aria-label={`Выбрано ${row.selectedCount} из ${row.count} фотографий в событии`}
+                >
+                  <span>Выбрано <strong>{row.selectedCount}</strong></span>
+                  <span>{row.count} фото</span>
+                </div>
               </div>
             );
           }

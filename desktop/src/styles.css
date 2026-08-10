@@ -181,9 +181,13 @@ button { color: inherit; }
   color: #8d928e;
   font-size: 10px;
 }
-.story-header div { display: flex; align-items: baseline; gap: 9px; }
-.story-header strong { color: #333733; font-size: 13px; }
-.story-header div span { text-transform: capitalize; }
+.story-header .story-heading { min-width: 0; display: flex; align-items: baseline; gap: 11px; }
+.story-heading > strong { overflow: hidden; color: #292d29; font-size: 17px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.story-heading > span { flex: 0 0 auto; text-transform: capitalize; }
+.story-header .story-counts { display: flex; align-items: center; gap: 11px; }
+.story-counts > span:first-child { padding: 5px 8px; border-radius: 7px; color: #747a75; background: #e8eae5; font-size: 10px; }
+.story-counts[data-has-selection="true"] > span:first-child { color: #35401b; background: #e7f1ad; }
+.story-counts strong { color: inherit; font-size: 11px; }
 .story-header::after { content: ""; position: absolute; inset: 8px 18px 2px 20px; z-index: 0; border-radius: 10px; background: transparent; transition: background .25s, box-shadow .25s; }
 .story-header > * { position: relative; z-index: 1; }
 .story-header.highlighted::after { background: #edf3c6; box-shadow: inset 3px 0 #8b9943; }
