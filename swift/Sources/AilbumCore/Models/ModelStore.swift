@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 
 public enum ModelStore {
-    private static let lock = NSLock()
+    private static let lock = NSRecursiveLock()
     nonisolated(unsafe) private static var loaded: [String: MLModel] = [:]
 
     static var modelsDir: URL {
@@ -25,6 +25,8 @@ public enum ModelStore {
 
     /// Compiled `.mlmodelc` cached by name and Manifest.json hash.
     static func compiledURL(_ name: String) throws -> URL {
+        lock.lock()
+        defer { lock.unlock() }
         let src = sourceURL(name)
         guard let manifest = FileManager.default.contents(atPath: src.appendingPathComponent("Manifest.json").path) else {
             throw AilbumError.decode("model not found: \(src.path)")
