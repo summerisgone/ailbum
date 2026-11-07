@@ -1,6 +1,7 @@
-import { Images, Maximize2, Minus, Plus, Check } from "lucide-react";
+import { BookOpen, Check, FolderDown, Images, Maximize2, Minus, Plus, Ruler } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Layout, LayoutAlternative, LayoutVariant } from "../types";
+import { AlbumPreview } from "./AlbumPreview";
 import { LayoutViewer, placedLabel } from "./LayoutViewer";
 import { type Crop, MAX_ZOOM, SpreadView, WARNING_LABELS, imageStyle, zoomCrop, zoomOf } from "./SpreadView";
 import { usePromptLabels } from "./usePromptLabels";
@@ -30,6 +31,8 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [prompt, setPrompt] = useState("");
   const [version, setVersion] = useState(0);
+  const [preview, setPreview] = useState<"book" | "actual" | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const requestId = useRef(0);
   const labels = usePromptLabels(prompt);
 
@@ -133,6 +136,24 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
     }
   }
 
+  async function exportOriginals() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await window.ailbum.exportLayout(layout.run_id);
+      if (result) {
+        setNotice(
+          `Сохранено фото: ${result.count} в ${result.folder}` +
+            (result.missing.length ? `. Не найдено файлов: ${result.missing.length}` : ""),
+        );
+      }
+    } catch (error) {
+      onError(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function zoom(factor: number | null) {
     if (!spread || !cell || !placement) return;
     const crop: Crop = factor == null ? zoomCrop(placement.crop, 1 / MAX_ZOOM) : zoomCrop(placement.crop, factor);
@@ -162,12 +183,27 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
         {layout.unplaced.length > 0 && (
           <div className="layout-banner info">Не поместилось кадров: {layout.unplaced.length}</div>
         )}
+        {notice && (
+          <div className="layout-banner info">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)}>Закрыть</button>
+          </div>
+        )}
         <div className="layout-toolbar">
           <label className="guides-toggle">
             <input type="checkbox" checked={guides} onChange={(event) => setGuides(event.target.checked)} />
             Направляющие
           </label>
           <button type="button" onClick={onRecreate}>Новая раскладка</button>
+          <button type="button" onClick={() => setPreview("book")}>
+            <BookOpen size={13} /> Альбом
+          </button>
+          <button type="button" onClick={() => setPreview("actual")} title="Разворот в натуральную величину">
+            <Ruler size={13} /> 1:1
+          </button>
+          <button type="button" disabled={busy} onClick={exportOriginals}>
+            <FolderDown size={13} /> Экспорт оригиналов
+          </button>
           <span className="toolbar-hint">Колесо или щипок над выбранной ячейкой - масштаб, перетаскивание - кадрирование</span>
         </div>
         {layout.spreads.map((item) => (
@@ -354,6 +390,14 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
           </>
         )}
       </aside>
+      {preview && (
+        <AlbumPreview
+          layout={layout}
+          mode={preview}
+          startSpread={Math.max(0, layout.spreads.findIndex((item) => item.id === spread?.id))}
+          onClose={() => setPreview(null)}
+        />
+      )}
       {viewer && spread && cell && viewerItems.length > 0 && (
         <LayoutViewer
           title={viewer.title}

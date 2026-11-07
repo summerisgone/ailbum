@@ -128,3 +128,39 @@ def test_layout_job_runs_generate_and_reports_progress(monkeypatch, capsys):
                         "current": 1, "total": 2}
     assert lines[-1] == {"type": "complete", "result": {"id": 3}}
     assert seen["args"] == ("r", LayoutParams("vertical", 4, 3, 5, "off"), Path("m"))
+
+
+def test_export_originals_copies_in_album_order(tmp_path: Path):
+    from ailbum import database
+    from ailbum.layout.export import EXPORT_DIR, export_originals
+
+    db = tmp_path / "a.db"
+    photos = tmp_path / "src"
+    photos.mkdir()
+    with database.connect(db) as c:
+        c.execute(
+            "INSERT INTO analysis_runs VALUES ('r','s','o','t','t','b','{}','{}','completed')")
+        for i in (1, 2, 3):
+            if i != 3:
+                (photos / f"p{i}.jpg").write_bytes(b"x" * i)
+            c.execute(
+                "INSERT INTO images (id, path, source_root, relative_path, file_name, extension,"
+                " file_size_bytes, modified_at, sha256, exif_json, container_metadata_json,"
+                " indexed_at) VALUES (?, ?, 's', ?, ?, 'jpg', 1, 't', 'x', '{}', '{}', 't')",
+                (i, str(photos / f"p{i}.jpg"), f"p{i}", f"p{i}.jpg"),
+            )
+        c.execute("INSERT INTO layouts (id, run_id, orientation, spread_count, min_photos,"
+                  " max_photos, selection_hash, created_at, updated_at)"
+                  " VALUES (1,'r','vertical',2,1,2,'h','t','t')")
+        c.execute("INSERT INTO layout_spreads VALUES (5, 1, 2, 'full', '[]', '[]', NULL)")
+        c.execute("INSERT INTO layout_spreads VALUES (6, 1, 1, 'pages', '[]', '[]', NULL)")
+        for spread, cell, image in ((5, 0, 1), (6, 0, 2), (6, 1, 3)):
+            c.execute("INSERT INTO layout_placements VALUES (?, ?, ?, 0, 0, 1, 1, 1, '[]', NULL)",
+                      (spread, cell, image))
+    out = tmp_path / "out"
+    result = desktop_bridge._dispatch(db, "layout.export", {"run_id": "r", "folder": str(out)})
+    assert result["count"] == 2
+    assert result["missing"] == [str(photos / "p3.jpg")]
+    assert sorted(p.name for p in (out / EXPORT_DIR).iterdir()) == ["01-1_p2.jpg", "02-1_p1.jpg"]
+    again = export_originals(db, "r", out)
+    assert again["folder"] == str(out / f"{EXPORT_DIR} 2")

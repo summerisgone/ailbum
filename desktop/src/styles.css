@@ -271,6 +271,7 @@ button { color: inherit; }
 .app-shell[data-platform="darwin"] .viewer-header { padding-left: 172px; }
 .viewer-header > div:first-child { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .viewer-header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.viewer-header button { -webkit-app-region: no-drag; }
 .viewer-header .viewer-file-name { width: fit-content; max-width: 100%; cursor: text; user-select: text; -webkit-user-select: text; -webkit-app-region: no-drag; }
 .viewer-header span { color: #aeb4af; font-size: 9px; text-transform: capitalize; }
 .viewer-position { display: flex; align-items: center; gap: 16px; }

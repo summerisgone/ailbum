@@ -25,6 +25,7 @@ from ailbum.database import (
     set_face_person,
 )
 from ailbum.layout import editing, service, store
+from ailbum.layout.export import export_originals
 from ailbum.layout.preferences import MAX_PROMPT
 from ailbum.layout.templates import format_for, templates_for
 from ailbum.layout.types import LayoutParams
@@ -106,6 +107,8 @@ def _dispatch_layout(database: Path, action: str, payload: dict[str, Any]) -> ob
         return _layout_templates(
             str(payload["orientation"]), int(count) if count is not None else None
         )
+    if action == "layout.export":
+        return export_originals(database, str(payload["run_id"]), Path(str(payload["folder"])))
     if action == "layout.parse_prompt":
         return editing.parse_prompt(str(payload.get("prompt") or ""))
     spread_id = int(payload["spread_id"])

@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld("ailbum", {
   getLayoutVariants: (spreadId) => ipcRenderer.invoke("layout:variants", { spreadId }),
   applyLayoutVariant: (spreadId, templateId, imageIds) =>
     ipcRenderer.invoke("layout:apply-variant", { spreadId, templateId, imageIds }),
+  exportLayout: (runId) => ipcRenderer.invoke("layout:export", { runId }),
   parseLayoutPrompt: (prompt) => ipcRenderer.invoke("layout:parse-prompt", { prompt }),
   mediaUrl: (imageId) => `ailbum-media://photo/${imageId}`,
   originalUrl: (imageId) => `ailbum-media://original/${imageId}`,

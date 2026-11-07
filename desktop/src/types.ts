@@ -282,6 +282,7 @@ declare global {
       getLayoutVariants(spreadId: number): Promise<LayoutVariant[]>;
       applyLayoutVariant(spreadId: number, templateId: string, imageIds: number[]): Promise<Layout>;
       parseLayoutPrompt(prompt: string): Promise<LayoutPromptInfo>;
+      exportLayout(runId: string): Promise<{ folder: string; count: number; missing: string[] } | null>;
       mediaUrl(imageId: number): string;
       originalUrl(imageId: number): string;
       faceUrl(faceId: number): string;
