@@ -132,7 +132,7 @@ def test_database_v2_faces_are_migrated_without_losing_rows(tmp_path: Path) -> N
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         face_id = connection.execute("SELECT face_id FROM faces").fetchone()[0]
 
-    assert version == 10
+    assert version == 11
     assert face_id == "old-face"
     assert {"left_eye_state", "expression", "smile_probability"} <= columns
 
