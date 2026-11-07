@@ -50,6 +50,28 @@ SQLite + analysis.json + selection.csv + desktop UI
 - `desktop/` — изолированный Electron renderer; получает данные и локальные
   изображения только через preload IPC.
 
+## Слои данных и жизненный цикл альбома
+
+Три слоя с разным сроком жизни:
+
+- оригиналы - файлы пользователя; Ailbum никогда не удаляет их насовсем, только в Корзину;
+- прокси - `proxies/photos` и `proxies/faces` рядом с базой; по ним UI и раскладка
+  показывают `archived` и `missing` кадры;
+- знания - SQLite: анализ, лица, люди, выбор альбомов, журнал решений, раскладки.
+
+Архивация альбома (`archive.py`): `ordered` -> экспорт оригиналов (`album_exports`) ->
+построение и проверка прокси -> Корзина (Electron `shell.trashItem`, CLI `send2trash`
+или Finder через `osascript`) -> `images.availability='archived'` -> альбом `archived`
+-> очистка кэша признаков. Кадры, входящие в другой черновик, блокируются и остаются на
+месте. `forget.py` удаляет накопленные знания по альбому или каталогу без отключения
+внешних ключей; `ailbum db usage` показывает занятое место.
+
+Обучаемый выбор (`src/ailbum/ranking/`): `features.py` и `model.py` - признаки и
+логистическая модель на NumPy; `labels.py`, `store.py`, `train.py` - пары из журнала
+`selection_events`, хранение в `ranking_models`, обучение с проверкой leave-one-album-out;
+`select.py` - выбор `target_count` кадров с штрафом за схожесть. Без активной модели
+пайплайн выбирает кадры как раньше. См. ADR 0001 и 0002.
+
 ## Раскладка альбома
 
 Пакет `src/ailbum/layout/` строит развороты из выбранных фото и похожих кадров.
@@ -61,7 +83,7 @@ SQLite + analysis.json + selection.csv + desktop UI
 - `facts.py` - пул кадров и защищаемые области из SQLite; кэш детектора в `image_object_scans`.
 - `composer.py` - выбор кадров, шаблона и ячеек для разворота.
 - `assistant.py` - превью вариантов и необязательный выбор через LM Studio.
-- `store.py` - таблицы `layouts`, `layout_spreads`, `layout_placements` и JSON-контракт.
+- `store.py` - раскладка по `album_id`, таблицы `layouts`, `layout_spreads`, `layout_placements` и JSON-контракт.
 - `service.py` - `preflight` (без открытия изображений) и `generate`.
 - `editing.py` - ручные правки: фото, обмен ячеек, шаблон, кроп, пересборка.
 - `cv/objects.py` - детектор объектов YOLOX на OpenCV DNN.
