@@ -106,3 +106,13 @@ def test_deterministic(solver):
     assert solver.solve_crop(1.3, regions, square_cell()) == solver.solve_crop(
         1.3, regions, square_cell()
     )
+
+
+def test_offset_cell_spine_mapping(solver):
+    cell = Cell(0, Rect(100, 0, 226, 200), Rect(103, 3, 220, 194), Rect(205, 0, 16, 200))
+    face = Region(Rect(0.49, 0.3, 0.02, 0.1), 1.0, True, "face")
+    full = solver.evaluate_crop(Rect(0, 0, 1, 1), 1.13, [face], cell)
+    assert "face_on_spine" in full.violations
+    best = solver.solve_crop(1.13, [face], cell)
+    assert solver.evaluate_crop(best.rect, 1.13, [face], cell) == best
+    assert best.fit >= full.fit
