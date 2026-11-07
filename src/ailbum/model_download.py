@@ -14,6 +14,7 @@ from ailbum.cv.faces import (
     SFACE_FILENAME,
     YUNET_FILENAME,
 )
+from ailbum.cv.objects import OBJECTS_FILENAME
 
 MODEL_SOURCES = {
     YUNET_FILENAME: (
@@ -44,6 +45,13 @@ MODEL_SOURCES = {
             "facial_expression_recognition_mobilefacenet_2022july.onnx"
         ),
         "4f61307602fc089ce20488a31d4e4614e3c9753a7d6c41578c854858b183e1a9",
+    ),
+    OBJECTS_FILENAME: (
+        (
+            "https://github.com/opencv/opencv_zoo/raw/main/models/object_detection_yolox/"
+            "object_detection_yolox_2022nov.onnx"
+        ),
+        "c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063",
     ),
 }
 
