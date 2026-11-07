@@ -4,7 +4,8 @@ import itertools
 
 import pytest
 
-from ailbum.layout.allocation import Allocation, StoryGroup, allocate_spreads as real_allocate
+from ailbum.layout.allocation import Allocation, StoryGroup
+from ailbum.layout.allocation import allocate_spreads as real_allocate
 
 
 @pytest.fixture
