@@ -1,6 +1,7 @@
 import os
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 
@@ -10,6 +11,7 @@ PHOTO_SIDE = 1600
 PHOTO_QUALITY = 82
 FACE_SIZE = 240
 FACE_QUALITY = 86
+TRUSTED_MAX_PIXELS = 1_000_000_000
 
 
 def _photo_proxy(database: Path, sha256: str) -> Path:
@@ -27,6 +29,29 @@ def _select(database: Path, sql: str, params: tuple) -> list[sqlite3.Row]:
         return connection.execute(sql, params).fetchall()
     finally:
         connection.close()
+
+
+@contextmanager
+def _trusted_pixels() -> Iterator[None]:
+    """Raise Pillow's decompression-bomb limit for local files, only for the call."""
+    previous = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = TRUSTED_MAX_PIXELS
+    try:
+        yield
+    finally:
+        Image.MAX_IMAGE_PIXELS = previous
+
+
+def _load_rgb(source: Path, draft_side: int | None = None) -> tuple[Image.Image, float]:
+    """Load an oriented RGB image; the scale is its width over the full oriented width."""
+    with _trusted_pixels(), Image.open(source) as original:
+        full_width = original.width
+        if int(original.getexif().get(274, 1) or 1) in (5, 6, 7, 8):
+            full_width = original.height
+        if draft_side and original.format == "JPEG":
+            original.draft("RGB", (draft_side, draft_side))
+        image = ImageOps.exif_transpose(original).convert("RGB")
+    return image, image.width / full_width
 
 
 def _valid_jpeg(path: Path) -> bool:
@@ -72,10 +97,14 @@ def _face_tile(image: Image.Image, face: Mapping, scale: float = 1.0) -> bytes:
     return _jpeg_bytes(tile, FACE_QUALITY)
 
 
-def build_proxies(database: Path, image_ids: list[int]) -> dict:
+def build_proxies(
+    database: Path,
+    image_ids: list[int],
+    progress: Callable[[int, int], None] | None = None,
+) -> dict:
     built: list[int] = []
     failed: list[dict] = []
-    for image_id in image_ids:
+    for position, image_id in enumerate(image_ids, start=1):
         try:
             rows = _select(
                 database,
@@ -87,33 +116,29 @@ def build_proxies(database: Path, image_ids: list[int]) -> dict:
             row = rows[0]
             target = _photo_proxy(database, str(row["sha256"]))
             source = Path(str(row["path"]))
-            original = None
-            if row["availability"] == "present" and source.is_file():
-                original = Image.open(source)
-            reuse = target.exists() and _valid_jpeg(target)
-            try:
-                if not reuse:
-                    if original is None:
-                        raise ValueError("original unavailable")
-                    image = ImageOps.exif_transpose(original).convert("RGB")
-                    image.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
-                    _write_atomic(target, _jpeg_bytes(image, PHOTO_QUALITY))
-                if original is not None:
-                    full = ImageOps.exif_transpose(original).convert("RGB")
-                    faces = _select(
-                        database,
-                        "SELECT id, bbox_x, bbox_y, bbox_width, bbox_height"
-                        " FROM faces WHERE image_id = ?",
-                        (image_id,),
-                    )
+            available = row["availability"] == "present" and source.is_file()
+            if not (target.exists() and _valid_jpeg(target)):
+                if not available:
+                    raise ValueError("original unavailable")
+                image, _scale = _load_rgb(source, PHOTO_SIDE)
+                image.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
+                _write_atomic(target, _jpeg_bytes(image, PHOTO_QUALITY))
+            if available:
+                faces = _select(
+                    database,
+                    "SELECT id, bbox_x, bbox_y, bbox_width, bbox_height"
+                    " FROM faces WHERE image_id = ?",
+                    (image_id,),
+                )
+                if faces:
+                    full, _scale = _load_rgb(source)
                     for face in faces:
                         _write_atomic(_face_proxy(database, int(face["id"])), _face_tile(full, face))
-            finally:
-                if original is not None:
-                    original.close()
             built.append(image_id)
         except Exception as error:  # noqa: BLE001
             failed.append({"image_id": image_id, "error": str(error)})
+        if progress is not None:
+            progress(position, len(image_ids))
     return {"built": built, "failed": failed}
 
 
@@ -128,7 +153,7 @@ def image_source(database: Path, image: Mapping | sqlite3.Row) -> Path | None:
     return proxy if image.get("sha256") and proxy.is_file() else None
 
 
-def face_thumbnail(database: Path, face_id: int) -> bytes:
+def face_thumbnail(database: Path, face_id: int) -> bytes | None:
     rows = _select(
         database,
         """
@@ -147,11 +172,16 @@ def face_thumbnail(database: Path, face_id: int) -> bytes:
         return cached.read_bytes()
     path = Path(str(face["path"]))
     if face["availability"] == "present" and path.is_file():
-        with Image.open(path) as source:
-            return _face_tile(ImageOps.exif_transpose(source).convert("RGB"), face)
+        image, _scale = _load_rgb(path)
+        data = _face_tile(image, face)
+        try:
+            _write_atomic(cached, data)
+        except (OSError, ValueError):
+            pass
+        return data
     proxy = _photo_proxy(database, str(face["sha256"]))
     if not proxy.is_file():
-        raise ValueError(f"No image source for face {face_id}")
+        return None
     width = int(face["width"] or 0)
     if int(face["orientation"] or 1) in (5, 6, 7, 8):
         width = int(face["height"] or 0)
