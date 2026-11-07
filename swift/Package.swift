@@ -16,7 +16,8 @@ let package = Package(
         ),
         .testTarget(
             name: "AilbumCoreTests",
-            dependencies: ["AilbumCore"]
+            dependencies: ["AilbumCore"],
+            resources: [.copy("Fixtures")]
         ),
     ],
     swiftLanguageModes: [.v5]
