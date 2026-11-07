@@ -311,12 +311,20 @@ def connect(database: Path) -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
+def mark_source_missing(connection: sqlite3.Connection, source_root: str) -> None:
+    connection.execute(
+        "UPDATE images SET availability = 'missing' "
+        "WHERE source_root = ? AND availability = 'present'",
+        (source_root,),
+    )
+
+
 def index_metadata(
     database: Path, source: Path, metadata: list[ImageMetadata]
 ) -> dict[str, int]:
     source_root = str((source if source.is_dir() else source.parent).resolve())
     with connect(database) as connection:
-        connection.execute("UPDATE images SET availability = 'missing' WHERE source_root = ?", (source_root,))
+        mark_source_missing(connection, source_root)
         for item in metadata:
             _upsert_image(connection, item)
         counts = connection.execute(
@@ -344,7 +352,7 @@ def save_analysis(
     run_id = str(manifest["run_id"])
     with connect(database) as connection:
         source_root = str((source if source.is_dir() else source.parent).resolve())
-        connection.execute("UPDATE images SET availability = 'missing' WHERE source_root = ?", (source_root,))
+        mark_source_missing(connection, source_root)
         image_ids: dict[str, int] = {}
         for item in metadata:
             image_ids[item.path] = _upsert_image(connection, item)
@@ -777,6 +785,12 @@ def database_summary(database: Path) -> dict[str, Any]:
             FROM images
             """
         ).fetchone()
+        states = {
+            row[0]: int(row[1])
+            for row in connection.execute(
+                "SELECT availability, COUNT(*) FROM images GROUP BY availability"
+            )
+        }
         runs = connection.execute("SELECT COUNT(*) FROM analysis_runs").fetchone()[0]
         faces = connection.execute("SELECT COUNT(*) FROM faces").fetchone()[0]
         linked_faces = connection.execute(
@@ -788,6 +802,9 @@ def database_summary(database: Path) -> dict[str, Any]:
     result = {key: int(image_counts[key] or 0) for key in count_fields}
     result.update(
         {
+            "availability": {
+                key: states.get(key, 0) for key in ("present", "missing", "archived")
+            },
             "analysis_runs": int(runs),
             "faces": int(faces),
             "linked_faces": int(linked_faces),
@@ -1116,191 +1133,6 @@ def create_person_from_face(
     return get_person(database, person_id)
 
 
-def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, Any]:
-    """Return the compact, read-optimized projection used by the Electron UI."""
-    if not database.exists():
-        raise FileNotFoundError(f"Database does not exist: {database}")
-    with connect(database) as connection:
-        run = _desktop_run(connection, run_id)
-        if run is None:
-            rows = connection.execute(
-                """
-                SELECT i.id, i.path, i.file_name, i.width, i.height, i.orientation,
-                       i.taken_at,
-                       i.modified_at, NULL AS quality, NULL AS sharpness,
-                       NULL AS exposure, NULL AS aesthetic_score,
-                       NULL AS composition_score, NULL AS rule_of_thirds,
-                       NULL AS frame_occupancy, NULL AS negative_space,
-                       NULL AS crop_risk, NULL AS color_balance,
-                       NULL AS color_harmony, NULL AS main_subject_json,
-                       '[]' AS scene_tags_json, '[]' AS object_tags_json,
-                       0 AS is_blurry, NULL AS similar_cluster, NULL AS story_id,
-                       NULL AS story_title,
-                       0 AS auto_selected, 0 AS face_count, 0 AS people_count,
-                       0 AS closed_eyes_count, 0 AS smiling_faces_count,
-                       NULL AS people_names, 0 AS favorite, NULL AS selection_position
-                FROM images AS i
-                WHERE i.availability = 'present'
-                ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
-                """
-            ).fetchall()
-            target_count = 24
-            story_rows: list[sqlite3.Row] = []
-        else:
-            _initialize_desktop_selection(connection, str(run["id"]))
-            _ensure_stories(connection, str(run["id"]))
-            rows = connection.execute(
-                """
-                WITH face_summary AS (
-                    SELECT f.image_id,
-                           COUNT(*) AS face_count,
-                           COUNT(DISTINCT f.person_id) AS people_count,
-                           SUM(CASE WHEN f.both_eyes_open = 0 THEN 1 ELSE 0 END)
-                               AS closed_eyes_count,
-                           SUM(CASE WHEN f.smile_probability >= 0.5 THEN 1 ELSE 0 END)
-                               AS smiling_faces_count,
-                           GROUP_CONCAT(DISTINCT NULLIF(TRIM(p.name), '')) AS people_names
-                    FROM faces AS f
-                    LEFT JOIN people AS p ON p.id = f.person_id
-                    WHERE f.run_id = ?
-                    GROUP BY f.image_id
-                )
-                SELECT i.id, i.path, i.file_name, i.width, i.height, i.orientation,
-                       i.taken_at,
-                       i.modified_at, pa.quality, pa.sharpness, pa.exposure,
-                       pa.aesthetic_score, pa.composition_score, pa.rule_of_thirds,
-                       pa.frame_occupancy, pa.negative_space, pa.crop_risk,
-                       pa.color_balance, pa.color_harmony, pa.main_subject_json,
-                       pa.scene_tags_json, pa.object_tags_json,
-                       pa.is_blurry, pa.similar_cluster, pa.story_id,
-                       s.title AS story_title,
-                       pa.selected AS auto_selected,
-                       COALESCE(fs.face_count, 0) AS face_count,
-                       COALESCE(fs.people_count, 0) AS people_count,
-                       COALESCE(fs.closed_eyes_count, 0) AS closed_eyes_count,
-                       COALESCE(fs.smiling_faces_count, 0) AS smiling_faces_count,
-                       fs.people_names,
-                       CASE WHEN ps.image_id IS NULL THEN 0 ELSE 1 END AS favorite,
-                       ps.position AS selection_position
-                FROM photo_analysis AS pa
-                JOIN images AS i ON i.id = pa.image_id
-                LEFT JOIN stories AS s
-                    ON s.run_id = pa.run_id AND s.story_id = pa.story_id
-                LEFT JOIN face_summary AS fs ON fs.image_id = i.id
-                LEFT JOIN photo_selections AS ps
-                    ON ps.run_id = pa.run_id AND ps.image_id = i.id
-                WHERE pa.run_id = ? AND i.availability = 'present'
-                ORDER BY pa.story_id, COALESCE(i.taken_at, i.modified_at), i.path
-                """,
-                (run["id"], run["id"]),
-            ).fetchall()
-            story_rows = connection.execute(
-                """
-                SELECT s.story_id AS id, s.title, s.started_at, s.ended_at,
-                       s.representative_image_id, s.naming_model,
-                       COUNT(pa.image_id) AS photo_count
-                FROM stories AS s
-                LEFT JOIN photo_analysis AS pa
-                    ON pa.run_id = s.run_id AND pa.story_id = s.story_id
-                WHERE s.run_id = ?
-                GROUP BY s.run_id, s.story_id
-                ORDER BY s.story_id
-                """,
-                (run["id"],),
-            ).fetchall()
-            setting = connection.execute(
-                "SELECT target_count FROM desktop_run_settings WHERE run_id = ?",
-                (run["id"],),
-            ).fetchone()
-            target_count = int(setting["target_count"]) if setting else 24
-
-    photos = [_desktop_photo(row) for row in rows]
-    selected_count = sum(1 for photo in photos if photo["favorite"])
-    run_result = dict(run) if run is not None else None
-    if run_result is not None:
-        run_result["summary"] = json.loads(run_result.pop("summary_json"))
-    return {
-        "database": str(database.resolve()),
-        "run": run_result,
-        "target_count": target_count,
-        "selected_count": selected_count,
-        "stories": [dict(row) for row in story_rows],
-        "photos": photos,
-    }
-
-
-def set_desktop_favorite(
-    database: Path, run_id: str, image_id: int, favorite: bool
-) -> dict[str, Any]:
-    """Persist a manual album choice without changing the analyzer's recommendation."""
-    with connect(database) as connection:
-        exists = connection.execute(
-            "SELECT 1 FROM photo_analysis WHERE run_id = ? AND image_id = ?",
-            (run_id, image_id),
-        ).fetchone()
-        if exists is None:
-            raise ValueError(f"Image {image_id} does not belong to analysis run {run_id}")
-        connection.execute(
-            """
-            INSERT INTO desktop_run_settings (
-                run_id, target_count, selection_initialized, updated_at
-            ) VALUES (?, 24, 1, ?)
-            ON CONFLICT(run_id) DO UPDATE SET
-                selection_initialized = 1,
-                updated_at = excluded.updated_at
-            """,
-            (run_id, utc_now()),
-        )
-        if favorite:
-            next_position = connection.execute(
-                "SELECT COALESCE(MAX(position), 0) + 1 FROM photo_selections WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()[0]
-            connection.execute(
-                """
-                INSERT INTO photo_selections (run_id, image_id, selected_at, position)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(run_id, image_id) DO NOTHING
-                """,
-                (run_id, image_id, utc_now(), next_position),
-            )
-        else:
-            connection.execute(
-                "DELETE FROM photo_selections WHERE run_id = ? AND image_id = ?",
-                (run_id, image_id),
-            )
-        selected_count = connection.execute(
-            "SELECT COUNT(*) FROM photo_selections WHERE run_id = ?", (run_id,)
-        ).fetchone()[0]
-    return {
-        "run_id": run_id,
-        "image_id": image_id,
-        "favorite": favorite,
-        "selected_count": int(selected_count),
-    }
-
-
-def set_desktop_target(database: Path, run_id: str, target_count: int) -> dict[str, Any]:
-    if not 1 <= target_count <= 999:
-        raise ValueError("Selection target must be between 1 and 999")
-    with connect(database) as connection:
-        if connection.execute(
-            "SELECT 1 FROM analysis_runs WHERE id = ?", (run_id,)
-        ).fetchone() is None:
-            raise ValueError(f"Analysis run does not exist: {run_id}")
-        connection.execute(
-            """
-            INSERT INTO desktop_run_settings (run_id, target_count, updated_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(run_id) DO UPDATE SET
-                target_count = excluded.target_count,
-                updated_at = excluded.updated_at
-            """,
-            (run_id, target_count, utc_now()),
-        )
-    return {"run_id": run_id, "target_count": target_count}
-
-
 def new_run_id() -> str:
     return str(uuid.uuid4())
 
@@ -1322,6 +1154,18 @@ def _upsert_image(connection: sqlite3.Connection, item: ImageMetadata) -> int:
     columns = list(values)
     parameters = list(values.values())
     placeholders = ", ".join("?" for _ in columns)
+    existing = connection.execute("SELECT id FROM images WHERE path = ?", (item.path,)).fetchone()
+    if existing is None:
+        moved = connection.execute(
+            "SELECT id FROM images WHERE sha256 = ? AND availability IN ('missing', 'archived')",
+            (item.sha256,),
+        ).fetchall()
+        if len(moved) == 1:
+            assignments = ", ".join(f"{column} = ?" for column in columns)
+            connection.execute(
+                f"UPDATE images SET {assignments} WHERE id = ?", [*parameters, moved[0]["id"]]
+            )
+            return int(moved[0]["id"])
     updates = ", ".join(
         f"{column} = excluded.{column}" for column in columns if column not in {"path"}
     )
@@ -1347,91 +1191,6 @@ def _face_result(row: sqlite3.Row) -> dict[str, Any]:
     result["expression_scores"] = json.loads(scores) if scores else None
     if result.get("both_eyes_open") is not None:
         result["both_eyes_open"] = bool(result["both_eyes_open"])
-    return result
-
-
-def _desktop_run(connection: sqlite3.Connection, run_id: str | None) -> sqlite3.Row | None:
-    if run_id is not None:
-        run = connection.execute(
-            """
-            SELECT id, source, started_at, completed_at, face_backend, summary_json
-            FROM analysis_runs
-            WHERE id = ? AND status = 'completed'
-            """,
-            (run_id,),
-        ).fetchone()
-        if run is None:
-            raise ValueError(f"Completed analysis run does not exist: {run_id}")
-        return run
-    return connection.execute(
-        """
-        SELECT id, source, started_at, completed_at, face_backend, summary_json
-        FROM analysis_runs
-        WHERE status = 'completed'
-        ORDER BY completed_at DESC
-        LIMIT 1
-        """
-    ).fetchone()
-
-
-def _initialize_desktop_selection(connection: sqlite3.Connection, run_id: str) -> None:
-    setting = connection.execute(
-        "SELECT selection_initialized FROM desktop_run_settings WHERE run_id = ?",
-        (run_id,),
-    ).fetchone()
-    selection_count = int(
-        connection.execute(
-            "SELECT COUNT(*) FROM photo_selections WHERE run_id = ?", (run_id,)
-        ).fetchone()[0]
-    )
-    if setting is None:
-        connection.execute(
-            """
-            INSERT INTO desktop_run_settings (
-                run_id, target_count, selection_initialized, updated_at
-            ) VALUES (?, 24, ?, ?)
-            """,
-            (run_id, int(selection_count > 0), utc_now()),
-        )
-        initialized = selection_count > 0
-    else:
-        initialized = bool(setting["selection_initialized"])
-    if initialized:
-        return
-
-    if selection_count == 0:
-        connection.execute(
-            """
-            INSERT INTO photo_selections (run_id, image_id, selected_at, position)
-            SELECT pa.run_id, pa.image_id, ?,
-                   ROW_NUMBER() OVER (
-                       ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
-                   )
-            FROM photo_analysis AS pa
-            JOIN images AS i ON i.id = pa.image_id
-            WHERE pa.run_id = ? AND pa.selected = 1 AND i.availability = 'present'
-            """,
-            (utc_now(), run_id),
-        )
-    connection.execute(
-        """
-        UPDATE desktop_run_settings
-        SET selection_initialized = 1, updated_at = ?
-        WHERE run_id = ?
-        """,
-        (utc_now(), run_id),
-    )
-
-
-def _desktop_photo(row: sqlite3.Row) -> dict[str, Any]:
-    result = dict(row)
-    for key in ("is_blurry", "auto_selected", "favorite"):
-        result[key] = bool(result[key])
-    names = result.pop("people_names", None)
-    result["people_names"] = names.split(",") if names else []
-    result["main_subject"] = _json_or_none(result.pop("main_subject_json", None))
-    result["scene_tags"] = json.loads(result.pop("scene_tags_json", "[]"))
-    result["object_tags"] = json.loads(result.pop("object_tags_json", "[]"))
     return result
 
 
