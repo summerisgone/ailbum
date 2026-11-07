@@ -2,11 +2,20 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("ailbum", {
   platform: process.platform,
-  bootstrap: () => ipcRenderer.invoke("library:bootstrap"),
-  setFavorite: (runId, imageId, favorite) =>
-    ipcRenderer.invoke("favorite:set", { runId, imageId, favorite }),
-  setTarget: (runId, targetCount) =>
-    ipcRenderer.invoke("target:set", { runId, targetCount }),
+  bootstrap: (albumId) => ipcRenderer.invoke("library:bootstrap", { albumId }),
+  setFavorite: (albumId, imageId, favorite) =>
+    ipcRenderer.invoke("favorite:set", { albumId, imageId, favorite }),
+  setTarget: (albumId, targetCount) =>
+    ipcRenderer.invoke("target:set", { albumId, targetCount }),
+  autofill: (albumId) => ipcRenderer.invoke("selection:autofill", { albumId }),
+  listAlbums: () => ipcRenderer.invoke("album:list"),
+  setAlbumStatus: (albumId, status) => ipcRenderer.invoke("album:status", { albumId, status }),
+  renameAlbum: (albumId, title) => ipcRenderer.invoke("album:rename", { albumId, title }),
+  deleteAlbum: (albumId, forgetDecisions) =>
+    ipcRenderer.invoke("album:delete", { albumId, forgetDecisions }),
+  archiveAlbum: (albumId) => ipcRenderer.invoke("album:archive", { albumId }),
+  confirmMissing: (imageIds) => ipcRenderer.invoke("album:confirm-missing", { imageIds }),
+  getUsage: () => ipcRenderer.invoke("album:usage"),
   getPeople: () => ipcRenderer.invoke("people:bootstrap"),
   getFaces: (personId) => ipcRenderer.invoke("person:faces", { personId }),
   setPersonName: (personId, name) =>
@@ -31,11 +40,11 @@ contextBridge.exposeInMainWorld("ailbum", {
     ipcRenderer.on("database:job-progress", handler);
     return () => ipcRenderer.removeListener("database:job-progress", handler);
   },
-  layoutPreflight: (runId, params) => ipcRenderer.invoke("layout:preflight", { runId, params }),
-  getLayout: (runId) => ipcRenderer.invoke("layout:get", { runId }),
+  layoutPreflight: (albumId, params) => ipcRenderer.invoke("layout:preflight", { albumId, params }),
+  getLayout: (albumId) => ipcRenderer.invoke("layout:get", { albumId }),
   getLayoutTemplates: (orientation, photoCount) =>
     ipcRenderer.invoke("layout:templates", { orientation, photoCount }),
-  startLayout: (runId, params) => ipcRenderer.invoke("layout:start", { runId, params }),
+  startLayout: (albumId, params) => ipcRenderer.invoke("layout:start", { albumId, params }),
   getLayoutAlternatives: (spreadId, cellIndex) =>
     ipcRenderer.invoke("layout:alternatives", { spreadId, cellIndex }),
   setLayoutPhoto: (spreadId, cellIndex, imageId) =>
@@ -53,7 +62,7 @@ contextBridge.exposeInMainWorld("ailbum", {
   getLayoutVariants: (spreadId) => ipcRenderer.invoke("layout:variants", { spreadId }),
   applyLayoutVariant: (spreadId, templateId, imageIds) =>
     ipcRenderer.invoke("layout:apply-variant", { spreadId, templateId, imageIds }),
-  exportLayout: (runId) => ipcRenderer.invoke("layout:export", { runId }),
+  exportLayout: (albumId) => ipcRenderer.invoke("layout:export", { albumId }),
   parseLayoutPrompt: (prompt) => ipcRenderer.invoke("layout:parse-prompt", { prompt }),
   mediaUrl: (imageId) => `ailbum-media://photo/${imageId}`,
   originalUrl: (imageId) => `ailbum-media://original/${imageId}`,
