@@ -11,6 +11,7 @@ import {
   ImageIcon,
   Images,
   Layers3,
+  LayoutGrid,
   LoaderCircle,
   Merge,
   Pencil,
@@ -43,6 +44,7 @@ import type {
   Photo,
   Story,
 } from "./types";
+import { LayoutSection } from "./layout/LayoutSection";
 
 const DAY_FORMAT = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -134,7 +136,7 @@ function App() {
   const [pending, setPending] = useState<Set<number>>(() => new Set());
   const [query, setQuery] = useState("");
   const [targetDraft, setTargetDraft] = useState("24");
-  const [section, setSection] = useState<"photos" | "people">("photos");
+  const [section, setSection] = useState<"photos" | "people" | "layout">("photos");
   const [viewerPhotoId, setViewerPhotoId] = useState<number | null>(null);
   const [storyJump, setStoryJump] = useState<StoryJump | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -301,6 +303,14 @@ function App() {
           >
             <UsersRound size={22} />
           </button>
+          <button
+            className={`nav-button${section === "layout" ? " active" : ""}`}
+            title="Раскладка"
+            data-section="layout"
+            onClick={() => setSection("layout")}
+          >
+            <LayoutGrid size={22} />
+          </button>
         </nav>
         <button
           className={`nav-button sidebar-bottom${settingsOpen ? " active" : ""}`}
@@ -316,7 +326,7 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="title-block">
-            <h1>{section === "photos" ? "Отбор фотографий" : "Люди и лица"}</h1>
+            <h1>{section === "photos" ? "Отбор фотографий" : section === "people" ? "Люди и лица" : "Раскладка"}</h1>
             <button className="database-button" onClick={chooseDatabase} title={library?.database}>
               <Database size={13} />
               <span>{library?.database.split(/[\\/]/).at(-1) ?? "Каталог"}</span>
@@ -364,6 +374,12 @@ function App() {
 
         {section === "people" ? (
           <PeopleEditor database={library?.database ?? ""} onError={setError} />
+        ) : section === "layout" ? (
+          library?.run ? (
+            <LayoutSection key={library.run.id} runId={library.run.id} onError={setError} />
+          ) : (
+            <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
+          )
         ) : !library?.run ? (
           <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
         ) : (

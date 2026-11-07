@@ -1,0 +1,44 @@
+.layout-section { min-height: 0; flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+.layout-loading { flex: 1; display: grid; place-items: center; color: #858b86; }
+.layout-spin { animation: layout-spin 1s linear infinite; }
+@keyframes layout-spin { to { transform: rotate(360deg); } }
+.layout-wizard-wrap { width: min(980px, 100%); margin: 0 auto; padding: 28px; }
+.layout-heading h2 { margin: 0 0 6px; color: #303531; font-size: 18px; letter-spacing: -.035em; }
+.layout-heading p { margin: 0 0 18px; color: #858b86; font-size: 11px; }
+.layout-wizard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.layout-step, .layout-summary { padding: 18px; border: 1px solid #dcddd8; border-radius: 14px; background: #fff; box-shadow: 0 5px 16px rgba(44, 49, 45, .035); }
+.layout-step h3 { margin: 8px 0 14px; color: #303531; font-size: 13px; }
+.layout-step-number { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; color: #566128; background: #edf3c8; font-size: 10px; font-weight: 700; }
+.layout-orientation { display: flex; gap: 10px; }
+.layout-card { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px; border: 1px solid #dcddd8; border-radius: 12px; background: #fafaf8; cursor: pointer; }
+.layout-card.active { border-color: #cbd38c; background: #f4f7dc; box-shadow: inset 0 0 0 1px #85933c; }
+.layout-card strong { font-size: 10px; }
+.layout-card small { color: #929792; font-size: 9px; }
+.layout-card-page { display: block; border: 2px solid #687268; border-radius: 3px; background: #fff; }
+.layout-card-page.vertical { width: 28px; height: 40px; }
+.layout-card-page.horizontal { width: 40px; height: 28px; }
+.layout-input { width: 72px; height: 36px; padding: 0 10px; border: 1px solid #d6d8d1; border-radius: 9px; background: #fff; font-size: 13px; text-align: center; outline: 0; }
+.layout-input:focus { border-color: #909d48; }
+.layout-hint { margin-left: 10px; padding: 6px 9px; border: 0; border-radius: 8px; color: #566128; background: #edf3c8; cursor: pointer; font-size: 10px; }
+.layout-range { display: flex; align-items: center; gap: 8px; color: #858b86; }
+.layout-assistant { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; color: #656c67; font-size: 10px; }
+.layout-assistant select { height: 30px; padding: 0 8px; border: 1px solid #d6d8d1; border-radius: 8px; background: #fff; font-size: 11px; }
+.layout-summary { grid-column: 1 / -1; }
+.layout-summary-line { display: flex; align-items: center; gap: 8px; color: #303531; font-size: 12px; }
+.layout-errors, .layout-warnings, .layout-allocation { margin: 10px 0 0; padding: 0; list-style: none; font-size: 11px; }
+.layout-errors li { color: #743c2e; }
+.layout-warnings li { color: #8a6a1f; }
+.layout-allocation { max-height: 220px; overflow-y: auto; }
+.layout-allocation li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #eceee9; }
+.layout-allocation span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #373c38; }
+.layout-allocation small { color: #929792; font-size: 9px; }
+.layout-allocation b { min-width: 24px; text-align: right; color: #566128; }
+.layout-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.layout-actions .primary-button:disabled { opacity: .42; cursor: default; }
+.layout-secondary { height: 38px; padding: 0 16px; border: 1px solid #d6d8d1; border-radius: 10px; background: #fff; cursor: pointer; font-size: 11px; }
+.layout-job { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 12px 22px; color: #566128; border-bottom: 1px solid #dce3a6; background: #f5f8dc; font-size: 11px; }
+.layout-job.error { color: #793f31; border-color: #e0b0a3; background: #fff0eb; }
+.layout-job small { color: #7f8776; }
+.layout-progress { width: 100%; height: 5px; overflow: hidden; border-radius: 8px; background: rgba(107, 119, 55, .14); }
+.layout-progress span { height: 100%; display: block; border-radius: inherit; background: #879640; transition: width .2s; }
+.layout-progress.indeterminate span { width: 34%; animation: job-progress 1.2s ease-in-out infinite; }
