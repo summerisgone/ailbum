@@ -1,6 +1,7 @@
 import hashlib
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from ailbum import albums
@@ -44,7 +45,9 @@ def _needs_export(connection, album_id: int) -> bool:
     return row is None
 
 
-def prepare_archive(database: Path, album_id: int) -> dict:
+def prepare_archive(
+    database: Path, album_id: int, progress: Callable[[int, int], None] | None = None
+) -> dict:
     with connect(database) as connection:
         album = albums.get_album(connection, album_id)
         if album["status"] == "archived":
@@ -71,7 +74,7 @@ def prepare_archive(database: Path, album_id: int) -> dict:
                 continue
             for image_id in _album_image_ids(connection, other["id"]) & set(images):
                 draft_titles.setdefault(image_id, other["title"])
-    result = build_proxies(database, list(images))
+    result = build_proxies(database, list(images), progress)
     errors = {f["image_id"]: f["error"] for f in result["failed"]}
     built = set(result["built"])
     trash, blocked = [], []
