@@ -147,9 +147,8 @@ def test_backfill_counts_differences(v11: Path) -> None:
 
 
 def test_restrict_blocks_image_delete(v11: Path) -> None:
-    with connect(v11) as c:
-        with pytest.raises(sqlite3.IntegrityError):
-            c.execute("DELETE FROM images WHERE id = 1")
+    with connect(v11) as c, pytest.raises(sqlite3.IntegrityError):
+        c.execute("DELETE FROM images WHERE id = 1")
 
 
 def test_migrate_idempotent(v11: Path) -> None:
@@ -189,9 +188,8 @@ def test_failure_mid_migration_keeps_v11(v11: Path, monkeypatch: pytest.MonkeyPa
         real(connection, table, sql)
 
     monkeypatch.setattr(m, "_rebuild", boom)
-    with pytest.raises(RuntimeError):
-        with connect(v11):
-            pass
+    with pytest.raises(RuntimeError), connect(v11):
+        pass
     raw = sqlite3.connect(v11)
     assert "missing" in {r[1] for r in raw.execute("PRAGMA table_info(images)")}
     assert raw.execute("SELECT COUNT(*) FROM photo_selections").fetchone()[0] == 3

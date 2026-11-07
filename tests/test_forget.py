@@ -1,11 +1,10 @@
-import sqlite3
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from ailbum import albums
-from ailbum.database import connect, utc_now
+from ailbum.database import connect
 from ailbum.forget import forget, plan_forget, usage
 
 

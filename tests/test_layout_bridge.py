@@ -170,7 +170,7 @@ def test_export_originals_copies_in_album_order(tmp_path: Path):
 
 
 def test_analysis_job_attaches_run(monkeypatch, tmp_path: Path):
-    import ailbum.albums as albums
+    from ailbum import albums
 
     seen = {}
     monkeypatch.setattr(

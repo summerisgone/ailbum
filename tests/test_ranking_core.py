@@ -5,8 +5,13 @@ import sqlite3
 import numpy as np
 
 from ailbum.models import (
-    ColorRecord, CompositionRecord, EyeStateRecord, ExpressionRecord, FaceRecord,
-    PhotoRecord, SemanticRecord,
+    ColorRecord,
+    CompositionRecord,
+    ExpressionRecord,
+    EyeStateRecord,
+    FaceRecord,
+    PhotoRecord,
+    SemanticRecord,
 )
 from ailbum.ranking import features
 from ailbum.ranking.model import LogisticModel

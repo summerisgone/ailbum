@@ -100,7 +100,7 @@ def test_face_thumbnail_from_proxy_scaled(tmp_path):
     data = proxies.face_thumbnail(db, 3)
     with Image.open(BytesIO(data)) as im:
         assert im.size == (240, 240)
-        r, g, b = im.convert("RGB").getpixel((120, 120))
+        r, _g, b = im.convert("RGB").getpixel((120, 120))
         assert r > 200 and b < 60
 
 

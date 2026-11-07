@@ -147,7 +147,7 @@ def trash_paths(paths: list[str]) -> list[str]:
             else:
                 script = f'tell application "Finder" to delete POSIX file "{_osascript_escape(path)}"'
                 subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S112 - a path that fails to trash is skipped
             continue
         done.append(path)
     return done

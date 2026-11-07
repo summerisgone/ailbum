@@ -13,8 +13,8 @@ from typing import Any
 
 import numpy as np
 
-from ailbum.migrations import migrate_v12
 from ailbum.metadata import ImageMetadata, _filename_taken_at
+from ailbum.migrations import migrate_v12
 from ailbum.models import PersonRecord, PhotoRecord, StoryRecord
 from ailbum.stories import STORY_ALGORITHM_VERSION, StoryPhoto, detect_stories
 from ailbum.story_naming import StoryNamer
