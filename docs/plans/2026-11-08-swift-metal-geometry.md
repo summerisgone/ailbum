@@ -124,7 +124,7 @@ e.g. hand-built space (1 octave, firstOctave 0, 5 DoGs 24x24 zero, `dogs[0][2][1
 **Produces:** SiftDetector.assignOrientations(_ kps: [SiftKeypoint], space: ScaleSpace) -> [SiftKeypoint] · SiftDetector.retainBest(_ kps: [SiftKeypoint], maxFeatures: Int) -> [SiftKeypoint]
 e.g. `retainBest(kps with responses [0.1, 0.5, 0.3], maxFeatures: 2)` responses -> `[0.5, 0.3]`
 e.g. keypoint on a horizontal ramp `v = x*4` (gradient +x) -> one keypoint with angle ≈ 0 (±5)
-**Review Focus:** `testVerticalRamp`: `v = y*4` -> angle ≈ 270 (OpenCV flips y: `360 - 90`); `testTwoPeaks`: gradients split 50/50 between two directions -> two keypoints, same x,y; `testRetainZero`: maxFeatures 0 keeps all (OpenCV semantics); `testDuplicatesRemoved`: identical keypoints collapse to one.
+**Review Focus:** `testVerticalRamp`: `v = y*4` -> angle ≈ 90 (OpenCV dy = img(y-1) - img(y+1), so 360 - 270); `testTwoPeaks`: gradients split 50/50 between two directions -> two keypoints, same x,y; `testRetainZero`: maxFeatures 0 keeps all (OpenCV semantics); `testDuplicatesRemoved`: identical keypoints collapse to one.
 **Test code:** as Review Focus.
 **Steps:** 1 failing tests, 2 run: FAIL, 3 implement, 4 run: PASS
 **Notes:** OpenCV `calcOrientationHist`: on `gaussians[octave-firstOctave][layer]`, point in octave coords `(x,y)*2^(-octave)`, `scl = size*0.5*2^(-octave)`, radius `round(3*1.5*scl)`, weight `exp(-(dx²+dy²)/(2*(1.5*scl)²))`, 36 bins, circular smoothing [1,4,6,4,1]/16, peaks >= 0.8*max that are local maxima, parabolic interpolation, `angle = 360 - bin*10`, snap `|angle-360| < 1e-4` to 0. Retention: sort by response desc (stable), cut to maxFeatures, after removing exact duplicates (x, y, size, angle).
