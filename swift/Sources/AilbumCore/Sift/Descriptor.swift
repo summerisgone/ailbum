@@ -24,7 +24,7 @@ public enum SiftDescriptor {
         let img = space.gaussians[o][kp.layer]
         let rows = img.height, cols = img.width
         let scale = Float(pow(2.0, Double(-kp.octave)))
-        let ptx = Int((kp.x * scale).rounded()), pty = Int((kp.y * scale).rounded())
+        let ptx = Int((kp.x * scale).rounded(.toNearestOrEven)), pty = Int((kp.y * scale).rounded(.toNearestOrEven))
         let scl = kp.size * 0.5 * scale
         var ori = 360 - kp.angle
         if abs(ori - 360) < Float.ulpOfOne { ori = 0 }
@@ -38,7 +38,7 @@ public enum SiftDescriptor {
         let expScale: Float = -1 / (Float(d * d) * 0.5)
         let rf: Float = histWidth * Float(2.0).squareRoot() * Float(d + 1) * 0.5
         let diag = Int(Float(rows * rows + cols * cols).squareRoot())
-        let radius: Int = min(Int(rf.rounded()), diag)
+        let radius: Int = min(Int(rf.rounded(.toNearestOrEven)), diag)
 
         var hist = [Float](repeating: 0, count: (d + 2) * (d + 2) * (n + 2))
         img.pixels.withUnsafeBufferPointer { p in
