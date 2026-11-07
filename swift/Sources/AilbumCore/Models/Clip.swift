@@ -1,4 +1,3 @@
-import CoreGraphics
 import CoreML
 import Foundation
 
@@ -51,46 +50,87 @@ public enum Clip {
     /// Test seam: replaces clip_text.json.
     nonisolated(unsafe) static var textOverride: ClipText?
 
-    /// Resize shortest side to 224 (bicubic-class), centre crop, normalise; shape 1x3x224x224.
+    /// Resize shortest side to 224 (PIL BICUBIC port), centre crop, normalise; shape 1x3x224x224.
     public static func preprocess(_ image: RGBImage) -> MLMultiArray {
         let size = 224
         let short = min(image.width, image.height)
         let newW = image.width <= image.height ? size : max(size, Int(Double(size) * Double(image.width) / Double(short)))
         let newH = image.width <= image.height ? max(size, Int(Double(size) * Double(image.height) / Double(short))) : size
-        var rgba = [UInt8](repeating: 255, count: image.width * image.height * 4)
-        for i in 0..<(image.width * image.height) {
-            rgba[i * 4] = image.pixels[i * 3]
-            rgba[i * 4 + 1] = image.pixels[i * 3 + 1]
-            rgba[i * 4 + 2] = image.pixels[i * 3 + 2]
-        }
-        let space = CGColorSpaceCreateDeviceRGB()
-        let info = CGImageAlphaInfo.noneSkipLast.rawValue
-        var resized = [UInt8](repeating: 0, count: newW * newH * 4)
-        rgba.withUnsafeMutableBytes { src in
-            let sctx = CGContext(
-                data: src.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
-                bytesPerRow: image.width * 4, space: space, bitmapInfo: info)
-            guard let cg = sctx?.makeImage() else { return }
-            resized.withUnsafeMutableBytes { dst in
-                let ctx = CGContext(
-                    data: dst.baseAddress, width: newW, height: newH, bitsPerComponent: 8,
-                    bytesPerRow: newW * 4, space: space, bitmapInfo: info)
-                ctx?.interpolationQuality = .high
-                ctx?.draw(cg, in: CGRect(x: 0, y: 0, width: newW, height: newH))
-            }
-        }
+        let resized = resizeBicubic(image.pixels, image.width, image.height, newW, newH)
         let out = try! MLMultiArray(shape: [1, 3, NSNumber(value: size), NSNumber(value: size)], dataType: .float32)
         let ptr = out.dataPointer.bindMemory(to: Float.self, capacity: 3 * size * size)
         let ox = (newW - size) / 2, oy = (newH - size) / 2
         for y in 0..<size {
             for x in 0..<size {
-                let s = ((y + oy) * newW + x + ox) * 4
+                let s = ((y + oy) * newW + x + ox) * 3
                 for c in 0..<3 {
                     ptr[c * size * size + y * size + x] = (Float(resized[s + c]) / 255 - mean[c]) / std[c]
                 }
             }
         }
         return out
+    }
+
+    private static func bicubic(_ xin: Double) -> Double {
+        let a = -0.5, x = abs(xin)
+        if x < 1 { return ((a + 2) * x - (a + 3)) * x * x + 1 }
+        if x < 2 { return (((x - 5) * x + 8) * x - 4) * a }
+        return 0
+    }
+
+    /// Port of Pillow ImagingResample (BICUBIC, 8-bit fixed point, horizontal then vertical). RGB interleaved.
+    static func resizeBicubic(_ src: [UInt8], _ w: Int, _ h: Int, _ newW: Int, _ newH: Int) -> [UInt8] {
+        func coeffs(_ inSize: Int, _ outSize: Int) -> (bounds: [(Int, Int)], k: [[Int32]]) {
+            let scale = Double(inSize) / Double(outSize)
+            let fscale = max(scale, 1.0)
+            let support = 2.0 * fscale
+            var bounds: [(Int, Int)] = [], ks: [[Int32]] = []
+            for xx in 0..<outSize {
+                let center = (Double(xx) + 0.5) * scale
+                let ss = 1.0 / fscale
+                let xmin = max(Int(center - support + 0.5), 0)
+                let xmax = min(Int(center + support + 0.5), inSize) - xmin
+                var k = (0..<xmax).map { bicubic((Double($0 + xmin) - center + 0.5) * ss) }
+                let total = k.reduce(0, +)
+                if total != 0 { k = k.map { $0 / total } }
+                bounds.append((xmin, xmax))
+                ks.append(k.map { Int32($0 < 0 ? -0.5 + $0 * 4194304.0 : 0.5 + $0 * 4194304.0) })
+            }
+            return (bounds, ks)
+        }
+        func clip8(_ v: Int32) -> UInt8 { UInt8(max(0, min(255, v >> 22))) }
+        var cur = src, cw = w, ch = h
+        if newW != w {
+            let (b, k) = coeffs(w, newW)
+            var out = [UInt8](repeating: 0, count: newW * ch * 3)
+            for y in 0..<ch {
+                for x in 0..<newW {
+                    let (xmin, n) = b[x]
+                    for c in 0..<3 {
+                        var acc: Int32 = 1 << 21
+                        for i in 0..<n { acc += Int32(cur[(y * cw + xmin + i) * 3 + c]) * k[x][i] }
+                        out[(y * newW + x) * 3 + c] = clip8(acc)
+                    }
+                }
+            }
+            cur = out; cw = newW
+        }
+        if newH != h {
+            let (b, k) = coeffs(h, newH)
+            var out = [UInt8](repeating: 0, count: cw * newH * 3)
+            for y in 0..<newH {
+                let (ymin, n) = b[y]
+                for x in 0..<cw {
+                    for c in 0..<3 {
+                        var acc: Int32 = 1 << 21
+                        for i in 0..<n { acc += Int32(cur[((ymin + i) * cw + x) * 3 + c]) * k[y][i] }
+                        out[(y * cw + x) * 3 + c] = clip8(acc)
+                    }
+                }
+            }
+            cur = out
+        }
+        return cur
     }
 
     public static func record(embedding: [Float], text: ClipText, threshold: Double, topK: Int) -> SemanticRecord {

@@ -89,7 +89,39 @@ private func fakeText() -> ClipText {
                 }
             }
         }
-        #expect(worst < 0.02, "worst \(worst)")
+        #expect(worst < 0.005, "worst \(worst)")
+    }
+    private func checksums(_ px: [UInt8]) -> (Int, Int) {
+        var s = 0, t = 0
+        for (i, v) in px.enumerated() { s += Int(v); t += (Int(v) * i) % 1009 }
+        return (s, t)
+    }
+
+    @Test func testResizeMatchesPILGradient() {
+        let w = 300, h = 200
+        var px = [UInt8](repeating: 0, count: w * h * 3)
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 3
+                px[i] = UInt8((Double(x) * 255 / 299).rounded(.toNearestOrEven))
+                px[i + 1] = UInt8((Double(y) * 255 / 199).rounded(.toNearestOrEven))
+                px[i + 2] = UInt8((Double(x + y) * 255 / 498).rounded(.toNearestOrEven))
+            }
+        }
+        let r = Clip.resizeBicubic(px, w, h, 336, 224)
+        #expect(r.count == 336 * 224 * 3)
+        let (s, t) = checksums(r)
+        #expect(s == 28788493)
+        #expect(t == 113629268)
+    }
+
+    @Test func testResizeMatchesPILAstronaut() throws {
+        let path = try #require(Bundle.module.url(forResource: "Fixtures/astronaut.png", withExtension: nil)).path
+        let image = try ImageLoader.load(path: path)
+        let r = Clip.resizeBicubic(image.pixels, image.width, image.height, 224, 224)
+        let (s, t) = checksums(r)
+        #expect(s == 17251227)
+        #expect(t == 67324831)
     }
 }
 
