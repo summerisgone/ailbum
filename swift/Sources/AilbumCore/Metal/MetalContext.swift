@@ -8,6 +8,8 @@ public final class MetalContext: @unchecked Sendable {
     public let queue: MTLCommandQueue?
     private var library: MTLLibrary?
     private var pipelines: [String: MTLComputePipelineState] = [:]
+    private var sourceLibraries: [String: MTLLibrary] = [:]
+    private var sourcePipelines: [String: MTLComputePipelineState] = [:]
     private let lock = NSLock()
 
     private init() {
@@ -30,6 +32,32 @@ public final class MetalContext: @unchecked Sendable {
             }
             let p = try device.makeComputePipelineState(function: fn)
             pipelines[name] = p
+            return p
+        } catch let e as AilbumError {
+            throw e
+        } catch {
+            throw AilbumError.metal("\(error)")
+        }
+    }
+
+    public func pipeline(_ name: String, source: String) throws -> MTLComputePipelineState {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let device else { throw AilbumError.metal("no Metal device") }
+        let key = "\(source.hashValue):\(source.count)"
+        let pkey = key + "/" + name
+        if let p = sourcePipelines[pkey] { return p }
+        do {
+            var lib = sourceLibraries[key]
+            if lib == nil {
+                lib = try device.makeLibrary(source: source, options: nil)
+                sourceLibraries[key] = lib
+            }
+            guard let fn = lib?.makeFunction(name: name) else {
+                throw AilbumError.metal("kernel not found: \(name)")
+            }
+            let p = try device.makeComputePipelineState(function: fn)
+            sourcePipelines[pkey] = p
             return p
         } catch let e as AilbumError {
             throw e
