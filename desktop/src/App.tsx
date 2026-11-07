@@ -404,6 +404,8 @@ function App() {
         <PhotoViewer
           photos={photos}
           photoId={viewerPhotoId}
+          pending={pending.has(viewerPhotoId)}
+          onToggle={toggleFavorite}
           onChange={setViewerPhotoId}
           onClose={() => setViewerPhotoId(null)}
         />
@@ -1312,11 +1314,15 @@ const PhotoCard = memo(function PhotoCard({
 function PhotoViewer({
   photos,
   photoId,
+  pending,
+  onToggle,
   onChange,
   onClose,
 }: {
   photos: Photo[];
   photoId: number;
+  pending: boolean;
+  onToggle(photo: Photo, favorite: boolean): void;
   onChange(photoId: number): void;
   onClose(): void;
 }) {
@@ -1357,9 +1363,16 @@ function PhotoViewer({
           </span>
         </div>
         <div className="viewer-position">
-          {photo.favorite && (
-            <span className="viewer-selected"><Check size={14} />Выбрано</span>
-          )}
+          <button
+            className={`viewer-select${photo.favorite ? " selected" : ""}`}
+            onClick={() => onToggle(photo, !photo.favorite)}
+            disabled={pending}
+            aria-pressed={photo.favorite}
+            title={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
+          >
+            {pending ? <LoaderCircle className="spin" size={14} /> : photo.favorite ? <Check size={14} /> : <Plus size={14} />}
+            {photo.favorite ? "Выбрано" : "Выбрать"}
+          </button>
           {score != null && <span>Качество <b>{score}</b></span>}
           <span>{index + 1} / {photos.length}</span>
         </div>
