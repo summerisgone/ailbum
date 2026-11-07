@@ -9,6 +9,7 @@ from ailbum import __version__
 from ailbum.catalog import index_library
 from ailbum.compare import compare_images
 from ailbum.database import (
+    connect,
     database_summary,
     get_catalog_image,
     get_person,
@@ -132,6 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
     database_commands = database.add_subparsers(dest="database_command", required=True)
     stats = database_commands.add_parser("stats", help="показать статистику базы")
     stats.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
+    usage = database_commands.add_parser("usage", help="показать, сколько места занимают данные")
+    usage.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
     listing = database_commands.add_parser("list", help="показать изображения")
     listing.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
     listing.add_argument("--limit", type=int, default=100)
@@ -189,7 +192,139 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("annotations", type=Path)
     evaluate.add_argument("--database", type=Path, default=Path(".ailbum/ailbum.sqlite3"))
     evaluate.add_argument("--run-id")
+
+    db_default = Path(".ailbum/ailbum.sqlite3")
+    album = commands.add_parser("album", help="управлять альбомами")
+    album_commands = album.add_subparsers(dest="album_command", required=True)
+    album_list = album_commands.add_parser("list", help="показать альбомы")
+    album_list.add_argument("--json", action="store_true")
+    for name, text in (
+        ("show", "показать альбом"),
+        ("order", "отметить альбом заказанным"),
+        ("reopen", "вернуть заказанный альбом в работу"),
+        ("delete", "удалить альбом"),
+        ("archive", "освободить место: перенести оригиналы альбома в Корзину"),
+        ("export", "скопировать оригиналы альбома в папку"),
+    ):
+        item = album_commands.add_parser(name, help=text)
+        item.add_argument("album_id", type=int)
+        if name == "delete":
+            item.add_argument(
+                "--forget-decisions", action="store_true", help="удалить и накопленные решения"
+            )
+        if name == "archive":
+            item.add_argument("--yes", action="store_true", help="не спрашивать подтверждение")
+        if name == "export":
+            item.add_argument("--folder", type=Path, required=True)
+    for item in album_commands.choices.values():
+        item.add_argument("--database", type=Path, default=db_default)
+
+    forget = commands.add_parser("forget", help="забыть накопленные знания об альбоме или каталоге")
+    target = forget.add_mutually_exclusive_group(required=True)
+    target.add_argument("--album", type=int, dest="album_id")
+    target.add_argument("--source")
+    forget.add_argument("--yes", action="store_true", help="выполнить, а не только показать план")
+    forget.add_argument("--database", type=Path, default=db_default)
+
+    ranking = commands.add_parser("ranking", help="обучаемый выбор фотографий")
+    ranking_commands = ranking.add_subparsers(dest="ranking_command", required=True)
+    for name, text in (
+        ("train", "обучить ранкер по правкам альбомов"),
+        ("status", "показать состояние ранкера"),
+        ("evaluate", "проверить ранкер без сохранения"),
+    ):
+        ranking_commands.add_parser(name, help=text).add_argument(
+            "--database", type=Path, default=db_default
+        )
     return parser
+
+
+def _dump(value: object) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def _album_command(args: argparse.Namespace) -> None:
+    from ailbum import albums
+    from ailbum.archive import complete_archive, prepare_archive, trash_paths
+
+    command = args.album_command
+    if command == "archive":
+        plan = prepare_archive(args.database, args.album_id)
+        for item in plan["blocked"]:
+            print(f"Не удаляем фото {item['image_id']}: {item['reason']}")
+        if plan["needs_export"]:
+            print(
+                "Нужен экспорт: сначала выполните "
+                f"ailbum album export {args.album_id} --folder ПАПКА"
+            )
+            raise SystemExit(1)
+        paths = plan["trash"]
+        if paths and not args.yes:
+            answer = input(f"Перенести {len(paths)} файлов в Корзину? [y/N] ")
+            if answer.strip().lower() not in ("y", "yes", "д", "да"):
+                print("Отменено")
+                return
+        trashed = trash_paths(paths) if paths else []
+        _dump(complete_archive(args.database, args.album_id, trashed))
+        return
+    if command == "export":
+        from ailbum.layout.export import export_originals
+
+        _dump(export_originals(args.database, args.album_id, args.folder))
+        return
+    with connect(args.database) as connection:
+        if command == "list":
+            found = albums.list_albums(connection)
+            if args.json:
+                _dump(found)
+                return
+            print("ID\tСтатус\tНазвание\tФото")
+            for item in found:
+                print(
+                    f"{item['id']}\t{item['status']}\t{item['title']}\t"
+                    f"{item['photo_count']}/{item['target_count']}"
+                )
+        elif command == "show":
+            _dump(albums.get_album(connection, args.album_id))
+        elif command == "order":
+            _dump(albums.set_status(connection, args.album_id, "ordered"))
+        elif command == "reopen":
+            _dump(albums.set_status(connection, args.album_id, "draft"))
+        else:
+            albums.delete_album(connection, args.album_id, args.forget_decisions)
+            print(f"Альбом {args.album_id} удалён")
+
+
+def _forget_command(args: argparse.Namespace) -> None:
+    from ailbum import forget
+
+    _dump(forget.plan_forget(args.database, args.album_id, args.source))
+    if args.yes:
+        _dump(forget.forget(args.database, args.album_id, args.source))
+    else:
+        print("Это только план. Добавьте --yes, чтобы выполнить.")
+
+
+def _ranking_command(args: argparse.Namespace) -> None:
+    from ailbum.ranking import train
+
+    with connect(args.database) as connection:
+        _dump(getattr(train, args.ranking_command)(connection))
+
+
+def _usage_command(args: argparse.Namespace) -> None:
+    from ailbum import forget
+
+    data = forget.usage(args.database)
+    mb = 1024 * 1024
+    print(f"База данных: {data['database_bytes'] / mb:.1f} МБ")
+    print(f"Превью: {data['proxies_bytes'] / mb:.1f} МБ")
+    print(f"Кэш признаков: {data['feature_cache_bytes'] / mb:.1f} МБ")
+    images = data["images"]
+    print(
+        f"Оригиналы: на месте {images['present']}, нет файла {images['missing']}, "
+        f"в архиве {images['archived']}"
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -238,6 +373,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"База данных: {args.database.resolve()}")
             return
         if args.command == "db":
+            if args.database_command == "usage":
+                _usage_command(args)
+                return
             if args.database_command == "stats":
                 print(json.dumps(database_summary(args.database), ensure_ascii=False, indent=2))
                 return
@@ -266,6 +404,15 @@ def main(argv: list[str] | None = None) -> None:
                         f"{image['id']}\t{image['taken_at'] or '-'}\t{dimensions}\t"
                         f"{camera or '-'}\t{image['path']}"
                     )
+            return
+        if args.command == "album":
+            _album_command(args)
+            return
+        if args.command == "forget":
+            _forget_command(args)
+            return
+        if args.command == "ranking":
+            _ranking_command(args)
             return
         if args.command == "people":
             if args.people_command == "list":
@@ -342,6 +489,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         summary = manifest["summary"]
         print(json.dumps(summary, ensure_ascii=False, indent=2))
+        from ailbum import albums
+
+        with connect(args.database) as connection:
+            album_id = albums.attach_run(
+                connection, str(manifest["run_id"]), [str(args.source.resolve())]
+            )
+        print(f"Альбом: {album_id}")
         print(f"Результаты: {(args.output / 'analysis.json').resolve()}")
         print(f"База данных: {args.database.resolve()}")
     except (OSError, ValueError, RuntimeError) as error:
