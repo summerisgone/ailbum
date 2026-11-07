@@ -665,10 +665,10 @@ function PeopleEditor({ database, onError }: { database: string; onError(message
     const name = nameDraft.trim();
     const personId = activePerson.id;
     setSavingName(true);
+    setMergeTarget(null);
     try {
       await window.ailbum.setPersonName(personId, name);
       await refreshPeople();
-      setMergeTarget(null);
       setCollection((current) =>
         current?.person?.id === personId
           ? { ...current, person: { ...current.person, name: name || null } }
