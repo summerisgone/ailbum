@@ -25,6 +25,7 @@ class FakeParams:
     min_photos: int
     max_photos: int
     assistant: str = "auto"
+    prompt: str = ""
 
 
 @dataclass(slots=True)
@@ -181,10 +182,12 @@ def _seed(e: Env, per_story: dict[int | None, int]) -> None:
     }
     save_analysis(e.db, source, e.root / "o", manifest, records, [], metadata, 0.8, stories)
     with connect(e.db) as c:
+        c.execute(
+            "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+            " VALUES (1, 'u1', 'А', 'r', 't', 't')"
+        )
         for i, r in enumerate(records, 1):
-            c.execute(
-                "INSERT INTO photo_selections VALUES ('r', ?, 't', ?)", (i, i)
-            )
+            c.execute("INSERT INTO album_photos VALUES (1, ?, ?, 't')", (i, i))
     e.pool = [
         FakePhoto(i, f"image:{i}", r.story_id) for i, r in enumerate(records, 1)
     ]
@@ -199,7 +202,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
     if REAL:
         return e
 
-    def fake_load_pool(connection, run_id, detector, progress=None):
+    def fake_load_pool(connection, album_id, detector, progress=None):
         e.load_pool_args.append(detector)
         if progress:
             progress(1, 1)
@@ -227,7 +230,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
         e.composed.append(composed)
         return composed
 
-    def fake_save(connection, run_id, params, spreads, unplaced, warnings, sel, model):
+    def fake_save(connection, album_id, run_id, params, spreads, unplaced, warnings, sel, model):
         e.saved = {
             "spreads": list(spreads),
             "unplaced": unplaced,
@@ -264,7 +267,7 @@ def test_preflight_counts_units_not_photos(env: Env) -> None:
             FakePhoto(3, "cluster:3", 1, selected=False),
             FakePhoto(4, "image:4", 2),
         ]
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 2, 1, 6))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 2, 1, 6))
     assert result["pool_count"] == 4
     if REAL:
         assert result["unit_count"] == 4
@@ -275,7 +278,7 @@ def test_preflight_counts_units_not_photos(env: Env) -> None:
 
 def test_min_max_needed(env: Env) -> None:
     _pool(env, {1: 20, 2: 20})
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 10, 3, 6))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 10, 3, 6))
     assert result["min_needed"] == 30
     assert result["max_used"] == 60
     assert result["errors"] == []
@@ -284,28 +287,28 @@ def test_min_max_needed(env: Env) -> None:
 
 def test_preflight_zero_spreads_error(env: Env) -> None:
     _pool(env, {1: 5})
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 0, 3, 6))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 0, 3, 6))
     assert result["errors"] == ["Число разворотов должно быть не меньше 1"]
     assert result["allocation"] == []
 
 
 def test_preflight_range_errors(env: Env) -> None:
     _pool(env, {1: 5})
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 1, 5, 3))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 1, 5, 3))
     assert any("больше максимума" in e for e in result["errors"])
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 1, 0, 9))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 1, 0, 9))
     assert any("от 1 до 8" in e for e in result["errors"])
 
 
 def test_preflight_fewer_units_than_spreads(env: Env) -> None:
     _pool(env, {1: 2})
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 5, 1, 6))
+    result = service.preflight(env.db, 1, LayoutParams("vertical", 5, 1, 6))
     assert result["errors"] == ["Кадров меньше, чем разворотов"]
 
 
 def test_preflight_skips_detector(env: Env) -> None:
     _pool(env, {1: 5})
-    service.preflight(env.db, "r", LayoutParams("vertical", 1, 3, 6))
+    service.preflight(env.db, 1, LayoutParams("vertical", 1, 3, 6))
     if not REAL:
         assert env.load_pool_args == [None]
 
@@ -313,14 +316,14 @@ def test_preflight_skips_detector(env: Env) -> None:
 def test_generate_invalid_params_raises(env: Env) -> None:
     _pool(env, {1: 5})
     with pytest.raises(ValueError, match="Число разворотов должно быть не меньше 1"):
-        service.generate(env.db, "r", LayoutParams("vertical", 0, 3, 6), None)
+        service.generate(env.db, 1, LayoutParams("vertical", 0, 3, 6), None)
     assert env.saved == {}
 
 
 def test_generate_empty_selection_raises(env: Env) -> None:
     _pool(env, {})
     with pytest.raises(ValueError):
-        service.generate(env.db, "r", LayoutParams("vertical", 2, 3, 6), None)
+        service.generate(env.db, 1, LayoutParams("vertical", 2, 3, 6), None)
 
 
 @fake_only
@@ -329,7 +332,7 @@ def test_generate_spread_count_exact(env: Env) -> None:
     events: list[tuple] = []
     service.generate(
         env.db,
-        "r",
+        1,
         LayoutParams("vertical", 5, 3, 6, "off"),
         None,
         lambda *a: events.append(a),
@@ -343,14 +346,14 @@ def test_generate_real_spread_count_exact(env: Env) -> None:
     if not REAL:
         pytest.skip("real producers only")
     _pool(env, {1: 12, 2: 8})
-    layout = service.generate(env.db, "r", LayoutParams("vertical", 5, 3, 6, "off"), None)
+    layout = service.generate(env.db, 1, LayoutParams("vertical", 5, 3, 6, "off"), None)
     assert len(layout["spreads"]) == 5
 
 
 @fake_only
 def test_assistant_off_never_connects(env: Env) -> None:
     _pool(env, {1: 6})
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "off"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "off"), None)
     assert FakeAssistant.instances == []
     assert env.saved["model"] is None
     assert service.ASSISTANT_WARNING not in env.saved["warnings"]
@@ -359,7 +362,7 @@ def test_assistant_off_never_connects(env: Env) -> None:
 @fake_only
 def test_assistant_uses_run_config_and_choice(env: Env) -> None:
     _pool(env, {1: 6, 2: 6})
-    service.generate(env.db, "r", LayoutParams("vertical", 2, 3, 6, "auto"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 2, 3, 6, "auto"), None)
     bot = FakeAssistant.instances[0]
     assert (bot.base_url, bot.model) == ("http://x/v1", "m1")
     assert env.saved["model"] == "m1"
@@ -369,7 +372,7 @@ def test_assistant_uses_run_config_and_choice(env: Env) -> None:
 @fake_only
 def test_assistant_choice_keeps_replacement_and_reason(env: Env) -> None:
     _pool(env, {1: 6})
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "auto"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "auto"), None)
     saved = env.saved["spreads"][0]
     alt = env.alts[0]
     assert saved.template_id == "alt"
@@ -382,11 +385,11 @@ def test_assistant_choice_keeps_replacement_and_reason(env: Env) -> None:
 def test_assistant_failure_keeps_engine_choice(env: Env) -> None:
     _pool(env, {1: 6})
     FakeAssistant.raises = True
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "auto"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "auto"), None)
     assert env.saved["spreads"][0] is env.composed[0].spreads[0]
     FakeAssistant.raises = False
     FakeAssistant.choice = FakeChoice(7, "x")
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "auto"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "auto"), None)
     assert env.saved["spreads"][0] is env.composed[1].spreads[0]
 
 
@@ -394,7 +397,7 @@ def test_assistant_failure_keeps_engine_choice(env: Env) -> None:
 def test_assistant_server_down_warns(env: Env) -> None:
     _pool(env, {1: 6})
     FakeAssistant.connected = False
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "auto"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "auto"), None)
     assert service.ASSISTANT_WARNING in env.saved["warnings"]
     assert env.saved["model"] is None
     assert FakeAssistant.instances[0].choose_calls == 0
@@ -402,7 +405,7 @@ def test_assistant_server_down_warns(env: Env) -> None:
 
 def test_no_detector_model_warns(env: Env) -> None:
     _pool(env, {1: 6})
-    layout = service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "off"), None)
+    layout = service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "off"), None)
     if REAL:
         assert service.DETECTOR_WARNING in layout["warnings"]
     else:
@@ -413,5 +416,27 @@ def test_no_detector_model_warns(env: Env) -> None:
 @fake_only
 def test_untimed_group_photos_not_lost(env: Env) -> None:
     _pool(env, {1: 4, None: 2})
-    service.generate(env.db, "r", LayoutParams("vertical", 2, 1, 6, "off"), None)
+    service.generate(env.db, 1, LayoutParams("vertical", 2, 1, 6, "off"), None)
     assert sorted(i for ids in env.seen for i in ids) == [1, 2, 3, 4, 5, 6]
+
+
+def test_generate_on_ordered_album_raises(env: Env) -> None:
+    _pool(env, {1: 5})
+    with connect(env.db) as c:
+        c.execute("UPDATE albums SET status = 'ordered'")
+    with pytest.raises(ValueError, match="Альбом заказан"):
+        service.generate(env.db, 1, LayoutParams("vertical", 1, 3, 6, "off"), None)
+    assert env.saved == {}
+
+
+def test_image_paths_use_proxy_for_archived(env: Env) -> None:
+    _pool(env, {1: 2})
+    with connect(env.db) as c:
+        c.execute("UPDATE images SET availability = 'archived' WHERE id = 1")
+        sha = c.execute("SELECT sha256 FROM images WHERE id = 1").fetchone()[0]
+        proxy = env.db.parent / "proxies" / "photos" / f"{sha}.jpg"
+        proxy.parent.mkdir(parents=True)
+        Image.new("RGB", (8, 8)).save(proxy)
+        paths = service._image_paths(env.db, c, [1, 2])
+    assert paths[1] == str(proxy)
+    assert 1 in paths and (2 not in paths or paths[2] != str(proxy))

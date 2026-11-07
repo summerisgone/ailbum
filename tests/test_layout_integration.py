@@ -19,6 +19,7 @@ from ailbum.metadata import collect_image_metadata
 from ailbum.models import FaceRecord, PhotoRecord, StoryRecord
 
 RUN = "r"
+ALBUM = 1
 YOLOX = Path(
     os.environ.get(
         "AILBUM_TEST_YOLOX",
@@ -82,11 +83,16 @@ def build_library(root: Path) -> Path:
     database = root / "a.sqlite"
     save_analysis(database, source, root / "o", manifest, records, [], metadata, 0.8, stories)
     with connect(database) as connection:
+        connection.execute(
+            "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+            " VALUES (1, 'u1', 'А', ?, 't', 't')",
+            (RUN,),
+        )
         for position, record in enumerate(records, 1):
             if record.selected:
                 connection.execute(
-                    "INSERT INTO photo_selections VALUES (?, ?, 't', ?)",
-                    (RUN, position, position),
+                    "INSERT INTO album_photos VALUES (?, ?, ?, 't')",
+                    (ALBUM, position, position),
                 )
     return database
 
@@ -122,8 +128,8 @@ def image_ids(layout: dict) -> list[int]:
 
 
 def test_full_flow_on_synthetic_library(db: Path) -> None:
-    generated = service.generate(db, RUN, params(), None)
-    layout = bridge(db, "layout.get", run_id=RUN)
+    generated = service.generate(db, ALBUM, params(), None)
+    layout = bridge(db, "layout.get", album_id=ALBUM)
 
     assert layout is not None and layout["id"] == generated["id"]
     assert layout["stale"] is False
@@ -171,17 +177,17 @@ def test_full_flow_on_synthetic_library(db: Path) -> None:
     with pytest.raises(ValueError):
         bridge(db, "layout.set_template", spread_id=spread_id, template_id=wrong[0]["id"])
 
-    assert bridge(db, "layout.get", run_id=RUN)["stale"] is False
+    assert bridge(db, "layout.get", album_id=ALBUM)["stale"] is False
 
     # a selection change marks the layout stale
     with connect(db) as connection:
-        connection.execute("DELETE FROM photo_selections WHERE run_id = ? AND image_id = 3", (RUN,))
-    assert bridge(db, "layout.get", run_id=RUN)["stale"] is True
+        connection.execute("DELETE FROM album_photos WHERE album_id = ? AND image_id = 3", (ALBUM,))
+    assert bridge(db, "layout.get", album_id=ALBUM)["stale"] is True
 
 
 @pytest.mark.parametrize("spreads", [2, 3, 4, 5])
 def test_spread_count_exact_and_images_unique(db: Path, spreads: int) -> None:
-    layout = service.generate(db, RUN, params(spreads, 2, 4), None)
+    layout = service.generate(db, ALBUM, params(spreads, 2, 4), None)
     assert len(layout["spreads"]) == spreads
     assert [s["position"] for s in layout["spreads"]] == list(range(1, spreads + 1))
     ids = image_ids(layout)
@@ -191,16 +197,16 @@ def test_spread_count_exact_and_images_unique(db: Path, spreads: int) -> None:
 
 
 def test_similar_cluster_uses_one_member(db: Path) -> None:
-    layout = service.generate(db, RUN, params(4, 3, 4), None)
+    layout = service.generate(db, ALBUM, params(4, 3, 4), None)
     ids = set(image_ids(layout)) | {i["image_id"] for i in layout["unplaced"]}
     assert len(ids & {1, 2}) <= 1
     assert len(ids & {9, 10}) <= 1
 
 
 def test_every_placed_face_uncut_on_synthetic_faces(db: Path) -> None:
-    layout = service.generate(db, RUN, params(), None)
+    layout = service.generate(db, ALBUM, params(), None)
     with connect(db) as connection:
-        pool = {p.image_id: p for p in load_pool(connection, RUN, None)}
+        pool = {p.image_id: p for p in load_pool(connection, ALBUM, None)}
     checked = 0
     for spread, cell in placed(layout):
         placement = cell["placement"]
@@ -220,8 +226,8 @@ def test_every_placed_face_uncut_on_synthetic_faces(db: Path) -> None:
 
 
 def test_generation_is_deterministic(db: Path) -> None:
-    first = service.generate(db, RUN, params(), None)
-    second = service.generate(db, RUN, params(), None)
+    first = service.generate(db, ALBUM, params(), None)
+    second = service.generate(db, ALBUM, params(), None)
     strip = lambda layout: [
         [(c["index"], c["placement"] and c["placement"]["image_id"]) for c in s["cells"]]
         for s in layout["spreads"]
@@ -239,7 +245,7 @@ def test_assistant_reply_is_recorded(db: Path, monkeypatch: pytest.MonkeyPatch) 
         return {"choices": [{"message": {"content": '{"choice":"B","reason":"ритм"}'}}]}
 
     monkeypatch.setattr(assistant_module, "_request_json", reply)
-    layout = service.generate(db, RUN, params(), None)
+    layout = service.generate(db, ALBUM, params(), None)
     assert layout["assistant_model"] == "m1"
     ids = image_ids(layout)
     assert len(ids) == len(set(ids))
@@ -254,7 +260,7 @@ def test_real_detector_model_when_available(db: Path, tmp_path: Path) -> None:
     models = tmp_path / "models"
     models.mkdir()
     shutil.copy(YOLOX, models / OBJECTS_FILENAME)
-    layout = service.generate(db, RUN, params(), models)
+    layout = service.generate(db, ALBUM, params(), models)
     assert not any("Модель детектора" in w for w in layout["warnings"])
     assert len(layout["spreads"]) == 4
     with connect(db) as connection:

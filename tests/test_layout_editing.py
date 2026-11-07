@@ -37,8 +37,8 @@ POOL = [
 ]
 
 
-def fake_load_layout(connection, run_id):
-    layout = connection.execute("SELECT id FROM layouts WHERE run_id = ?", (run_id,)).fetchone()
+def fake_load_layout(connection, album_id):
+    layout = connection.execute("SELECT id FROM layouts WHERE album_id = ?", (album_id,)).fetchone()
     if layout is None:
         return None
     spreads = []
@@ -56,7 +56,7 @@ def fake_load_layout(connection, run_id):
                 "replaced_image_id": p["replaced_image_id"]}})
         spreads.append({"id": s["id"], "template_id": s["template_id"],
                         "warnings": json.loads(s["warnings_json"]), "cells": cells})
-    return {"run_id": run_id, "spreads": spreads}
+    return {"album_id": album_id, "spreads": spreads}
 
 
 def fake_best_variants(photos, params, limit=3):
@@ -77,7 +77,7 @@ def fake_best_variants(photos, params, limit=3):
 def api(monkeypatch):
     calls = []
     if os.environ.get("SUPERLITE_REAL") != "1":
-        def pool(connection, run_id, detector, progress=None):
+        def pool(connection, album_id, detector, progress=None):
             calls.append(detector)
             return list(POOL)
 
@@ -93,6 +93,9 @@ def db(tmp_path):
     with database.connect(path) as c:
         c.execute(
             "INSERT INTO analysis_runs VALUES ('r','s','o','t','t','b','{}','{}','completed')")
+        c.execute(
+            "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+            " VALUES (1, 'u1', 'А', 'r', 't', 't')")
         for i in range(1, 6):
             c.execute(
                 "INSERT INTO images (id, path, source_root, relative_path, file_name, extension,"
@@ -100,9 +103,9 @@ def db(tmp_path):
                 " indexed_at) VALUES (?, ?, 's', ?, ?, 'jpg', 1, 't', 'x', '{}', '{}', 't')",
                 (i, f"/p{i}.jpg", f"p{i}", f"p{i}"),
             )
-        c.execute("INSERT INTO layouts (id, run_id, orientation, spread_count, min_photos,"
+        c.execute("INSERT INTO layouts (id, album_id, run_id, orientation, spread_count, min_photos,"
                   " max_photos, selection_hash, created_at, updated_at)"
-                  " VALUES (1,'r','vertical',1,3,3,'h','t','t')")
+                  " VALUES (1,1,'r','vertical',1,3,3,'h','t','t')")
         c.execute("INSERT INTO layout_spreads VALUES (5, 1, 1, 'page_2h', '[1]', '[\"x\"]', 'why')")
         cells = {c.index: c for c in templates_for("vertical", 3)[0].cells}
         for index, image_id in enumerate((1, 2, 3)):
@@ -371,3 +374,22 @@ def test_recompose_with_wish_repicks_photos(db, api, monkeypatch):
     assert sorted(images(layout)) == [1, 2, 3]
     with pytest.raises(ValueError):
         editing.recompose_spread(db, 5, "что-нибудь красивое")
+
+
+def test_mutations_on_ordered_album_raise_reads_allowed(db, api):
+    with database.connect(db) as c:
+        c.execute("UPDATE albums SET status = 'ordered'")
+    calls = [
+        lambda: editing.set_photo(db, 5, 0, 5),
+        lambda: editing.swap_cells(db, 5, 0, 1),
+        lambda: editing.set_template(db, 5, "pages"),
+        lambda: editing.set_crop(db, 5, 0, {"x": 0, "y": 0, "w": 1, "h": 1}),
+        lambda: editing.recompose_spread(db, 5),
+        lambda: editing.apply_variant(db, 5, "page_2h", [1, 2, 3]),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match="Альбом заказан"):
+            call()
+    editing.alternatives(db, 5, 0)
+    editing.similar(db, 5, 0)
+    editing.variants(db, 5)

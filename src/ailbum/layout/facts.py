@@ -10,8 +10,10 @@ from pathlib import Path
 
 import cv2
 
+from ailbum import proxies
 from ailbum.cv.objects import DETECTOR_MODEL, DetectedObject, ObjectDetector
 from ailbum.io import load_image
+from ailbum.layout.store import album_run
 from ailbum.layout.types import Rect, Region
 
 FACE_BACKGROUND_RATIO = 0.05
@@ -77,31 +79,37 @@ def build_regions(
 
 def load_pool(
     connection: sqlite3.Connection,
-    run_id: str,
+    album_id: int,
     detector: ObjectDetector | None,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[PhotoFacts]:
+    run_id = album_run(connection, album_id)
+    database = Path(connection.execute("PRAGMA database_list").fetchone()[2])
     rows = connection.execute(
         """
         SELECT pa.image_id, pa.quality, pa.aesthetic_score, pa.main_subject_json,
                pa.similar_cluster, pa.story_id, ps.image_id IS NOT NULL AS selected,
-               i.path, i.sha256, i.width, i.height, i.orientation, i.taken_at
+               i.path, i.sha256, i.availability, i.width, i.height, i.orientation, i.taken_at
         FROM photo_analysis AS pa
         JOIN images AS i ON i.id = pa.image_id
-        LEFT JOIN photo_selections AS ps ON ps.run_id = pa.run_id AND ps.image_id = pa.image_id
-        WHERE pa.run_id = ? AND pa.error IS NULL AND i.missing = 0
+        LEFT JOIN album_photos AS ps ON ps.album_id = ? AND ps.image_id = pa.image_id
+        WHERE pa.run_id = ? AND pa.error IS NULL
           AND (ps.image_id IS NOT NULL
                OR (pa.is_blurry = 0 AND pa.similar_cluster IS NOT NULL
                    AND pa.similar_cluster IN (
                        SELECT pa2.similar_cluster FROM photo_analysis AS pa2
-                       JOIN photo_selections AS ps2
-                         ON ps2.run_id = pa2.run_id AND ps2.image_id = pa2.image_id
+                       JOIN album_photos AS ps2
+                         ON ps2.album_id = ? AND ps2.image_id = pa2.image_id
                        WHERE pa2.run_id = pa.run_id AND pa2.similar_cluster IS NOT NULL)))
         ORDER BY pa.image_id
         """,
-        (run_id,),
+        (album_id, run_id, album_id),
     ).fetchall()
-    rows = [row for row in rows if row["width"] and row["height"] and Path(row["path"]).exists()]
+    rows = [
+        row
+        for row in rows
+        if row["width"] and row["height"] and proxies.image_source(database, dict(row)) is not None
+    ]
 
     faces: dict[int, list[sqlite3.Row]] = defaultdict(list)
     for face in connection.execute(
@@ -188,7 +196,7 @@ def _objects_for(
             DetectedObject(item["label"], item["score"], tuple(item["bbox"]))
             for item in json.loads(cached["objects_json"])
         ]
-    if detector is None:
+    if detector is None or row["availability"] != "present":
         return []
     try:
         image = cv2.cvtColor(load_image(Path(row["path"])), cv2.COLOR_BGR2RGB)

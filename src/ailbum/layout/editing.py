@@ -12,7 +12,7 @@ from ailbum.layout import preferences
 from ailbum.layout.composer import MAX_CELLS, SELECTED_BONUS, best_variants
 from ailbum.layout.crop import evaluate_crop, solve_crop
 from ailbum.layout.facts import load_pool
-from ailbum.layout.store import load_layout
+from ailbum.layout.store import load_layout, require_draft
 from ailbum.layout.templates import format_for, templates_for
 from ailbum.layout.types import Cell, LayoutParams, Rect
 
@@ -26,7 +26,7 @@ def alternatives(database: Path, spread_id: int, cell_index: int) -> list[dict]:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
         cell = _cell(spread, cell_index)
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         scoped = [p for p in pool.values() if p.story_id in spread["story_ids"]]
         placed = _placed(connection, spread["layout_id"])
         row = _placements(connection, spread_id).get(cell_index)
@@ -45,7 +45,7 @@ def similar(database: Path, spread_id: int, cell_index: int) -> list[dict]:
         row = _placements(connection, spread_id).get(cell_index)
         if row is None:
             raise ValueError(f"В ячейке {cell_index} нет фото")
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         photo = _photo(pool, row["image_id"])
         placed = _placed(connection, spread["layout_id"])
         members = sorted(
@@ -59,7 +59,7 @@ def variants(database: Path, spread_id: int) -> list[dict]:
     """Other templates for the same photos, then with one free photo more and one less."""
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         current = _placements(connection, spread_id)
         photos = [_photo(pool, current[index]["image_id"]) for index in sorted(current)]
         sets = [photos]
@@ -86,7 +86,8 @@ def apply_variant(
 ) -> dict:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
-        pool = _pool(connection, spread["run_id"])
+        require_draft(connection, spread["album_id"])
+        pool = _pool(connection, spread["album_id"])
         ids = list(dict.fromkeys(int(i) for i in image_ids))
         if not 1 <= len(ids) <= MAX_CELLS:
             raise ValueError(f"На развороте может быть от 1 до {MAX_CELLS} фото")
@@ -112,8 +113,9 @@ def parse_prompt(prompt: str) -> dict:
 def set_photo(database: Path, spread_id: int, cell_index: int, image_id: int) -> dict:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
+        require_draft(connection, spread["album_id"])
         _cell(spread, cell_index)
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         if image_id not in pool:
             raise ValueError(f"Кадр {image_id} недоступен для раскладки")
         holder = connection.execute(
@@ -133,17 +135,19 @@ def set_photo(database: Path, spread_id: int, cell_index: int, image_id: int) ->
 def swap_cells(database: Path, spread_id: int, cell_a: int, cell_b: int) -> dict:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
+        require_draft(connection, spread["album_id"])
         _cell(spread, cell_a)
         _cell(spread, cell_b)
         if cell_a != cell_b:
             _swap(connection, spread, cell_a, spread, cell_b,
-                  _pool(connection, spread["run_id"]))
+                  _pool(connection, spread["album_id"]))
         return _finish(connection, spread)
 
 
 def set_template(database: Path, spread_id: int, template_id: str) -> dict:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
+        require_draft(connection, spread["album_id"])
         template = next(
             (t for t in templates_for(spread["orientation"]) if t.id == template_id), None)
         if template is None:
@@ -153,7 +157,7 @@ def set_template(database: Path, spread_id: int, template_id: str) -> dict:
             raise ValueError(
                 f"Шаблон {template_id} рассчитан на {template.photo_count} фото, "
                 f"в развороте {len(current)}")
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         photos = [_photo(pool, current[index]["image_id"]) for index in sorted(current)]
         results = {
             (p.image_id, c.index): solve_crop(p.aspect, p.regions, c)
@@ -179,11 +183,12 @@ def set_template(database: Path, spread_id: int, template_id: str) -> dict:
 def set_crop(database: Path, spread_id: int, cell_index: int, crop: dict) -> dict:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
+        require_draft(connection, spread["album_id"])
         cell = _cell(spread, cell_index)
         row = _placements(connection, spread_id).get(cell_index)
         if row is None:
             raise ValueError(f"В ячейке {cell_index} нет фото")
-        photo = _photo(_pool(connection, spread["run_id"]), row["image_id"])
+        photo = _photo(_pool(connection, spread["album_id"]), row["image_id"])
         rect = _validated_window(crop, photo.aspect, cell)
         result = evaluate_crop(rect, photo.aspect, photo.regions, cell)
         _write(connection, spread_id, cell_index, row["image_id"], result,
@@ -198,8 +203,9 @@ def recompose_spread(database: Path, spread_id: int, prompt: str = "") -> dict:
         raise ValueError(UNKNOWN_WISH)
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
+        require_draft(connection, spread["album_id"])
         current = _placements(connection, spread_id)
-        pool = _pool(connection, spread["run_id"])
+        pool = _pool(connection, spread["album_id"])
         photos = [_photo(pool, current[index]["image_id"]) for index in sorted(current)]
         if weights:
             photos = _pick(photos, _free(connection, spread, pool), weights)
@@ -318,7 +324,7 @@ def _write_draft(connection: sqlite3.Connection, spread: dict, draft, pool: dict
 
 def _spread(connection: sqlite3.Connection, spread_id: int) -> dict:
     row = connection.execute(
-        "SELECT s.id, s.layout_id, s.template_id, s.story_ids_json, l.run_id, l.orientation"
+        "SELECT s.id, s.layout_id, s.template_id, s.story_ids_json, l.album_id, l.run_id, l.orientation"
         " FROM layout_spreads s JOIN layouts l ON l.id = s.layout_id WHERE s.id = ?",
         (spread_id,),
     ).fetchone()
@@ -347,9 +353,9 @@ def _placements(connection: sqlite3.Connection, spread_id: int) -> dict[int, sql
     return {row["cell_index"]: row for row in rows}
 
 
-def _pool(connection: sqlite3.Connection, run_id: str) -> dict:
+def _pool(connection: sqlite3.Connection, album_id: int) -> dict:
     # detector=None reads cached scans only, so edits never rerun or drop them.
-    return {p.image_id: p for p in load_pool(connection, run_id, None)}
+    return {p.image_id: p for p in load_pool(connection, album_id, None)}
 
 
 def _photo(pool: dict, image_id: int):
@@ -417,6 +423,6 @@ def _finish(connection: sqlite3.Connection, spread: dict) -> dict:
         "UPDATE layouts SET updated_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(timespec="seconds"), spread["layout_id"]),
     )
-    layout = load_layout(connection, spread["run_id"])
+    layout = load_layout(connection, spread["album_id"])
     assert layout is not None
     return layout
