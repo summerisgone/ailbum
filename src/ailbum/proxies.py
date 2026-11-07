@@ -117,7 +117,9 @@ def build_proxies(database: Path, image_ids: list[int]) -> dict:
     return {"built": built, "failed": failed}
 
 
-def image_source(database: Path, image: Mapping) -> Path | None:
+def image_source(database: Path, image: Mapping | sqlite3.Row) -> Path | None:
+    if isinstance(image, sqlite3.Row):
+        image = dict(image)
     if image.get("availability") == "present":
         path = Path(str(image["path"]))
         if path.is_file():

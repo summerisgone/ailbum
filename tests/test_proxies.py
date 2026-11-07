@@ -111,3 +111,13 @@ def test_face_thumbnail_unknown(tmp_path):
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+def test_image_source_accepts_sqlite_row(tmp_path):
+    src = tmp_path / "r.jpg"
+    jpeg(src, (50, 50))
+    db = make_db(tmp_path, [])
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    row = connection.execute("SELECT ? AS path, 'ab' AS sha256, 'present' AS availability", (str(src),)).fetchone()
+    assert proxies.image_source(db, row) == src
