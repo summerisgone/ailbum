@@ -13,8 +13,8 @@ extension SiftDetector {
             let img = space.gaussians[o][kp.layer]
             let scale = Float(pow(2.0, Double(-kp.octave)))
             let scl = kp.size * 0.5 * scale
-            let cx = Int((kp.x * scale).rounded()), cy = Int((kp.y * scale).rounded())
-            let radius = Int((3 * 1.5 * scl).rounded())
+            let cx = Int((kp.x * scale).rounded(.toNearestOrEven)), cy = Int((kp.y * scale).rounded(.toNearestOrEven))
+            let radius = Int((3 * 1.5 * scl).rounded(.toNearestOrEven))
             let sigma = 1.5 * scl
             let expScale = -1 / (2 * sigma * sigma)
 
@@ -31,7 +31,7 @@ extension SiftDetector {
                         let w = exp(Float(i * i + j * j) * expScale)
                         var ori = atan2(dy, dx) * 180 / .pi
                         if ori < 0 { ori += 360 }
-                        var bin = Int((ori * Float(n) / 360).rounded())
+                        var bin = Int((ori * Float(n) / 360).rounded(.toNearestOrEven))
                         if bin >= n { bin -= n }
                         if bin < 0 { bin += n }
                         hist[bin] += w * (dx * dx + dy * dy).squareRoot()
@@ -53,7 +53,7 @@ extension SiftDetector {
                 var bin = Float(j) + 0.5 * (smooth[l] - smooth[r]) / (smooth[l] - 2 * smooth[j] + smooth[r])
                 if bin < 0 { bin += Float(n) } else if bin >= Float(n) { bin -= Float(n) }
                 var angle = 360 - (360 / Float(n)) * bin
-                if abs(angle - 360) < 1e-4 { angle = 0 }
+                if abs(angle - 360) < Float.ulpOfOne { angle = 0 }
                 var k = kp
                 k.angle = angle
                 out.append(k)

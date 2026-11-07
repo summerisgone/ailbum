@@ -44,7 +44,7 @@ public final class MetalContext: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let device else { throw AilbumError.metal("no Metal device") }
-        let key = "\(source.hashValue):\(source.count)"
+        let key = source
         let pkey = key + "/" + name
         if let p = sourcePipelines[pkey] { return p }
         do {

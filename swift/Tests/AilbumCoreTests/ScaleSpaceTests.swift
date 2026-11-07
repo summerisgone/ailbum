@@ -61,3 +61,20 @@ private func ramp32() -> GrayImage {
     #expect(p1 === p2)
     #expect(throws: AilbumError.self) { try MetalContext.shared.pipeline("nope", source: src) }
 }
+
+@Test func testFullBaseLevelParity() throws {
+    let s = try ScaleSpace.build(ramp32(), layers: 3, sigma: 1.6)
+    let g = s.gaussians[0][0]
+    #expect(scaleSpaceBaseGolden.count == 64 * 64 && g.pixels.count == 64 * 64)
+    for i in 0..<(64 * 64) { #expect(abs(g.pixels[i] - scaleSpaceBaseGolden[i]) < 1e-2) }
+}
+
+@Test func testSourceCacheKeyedBySource() throws {
+    guard MetalContext.shared.device != nil else { return }
+    let a = "#include <metal_stdlib>\nusing namespace metal;\nkernel void ka(device float *a [[buffer(0)]], uint i [[thread_position_in_grid]]) { a[i] = 1.0f; }"
+    let b = "#include <metal_stdlib>\nusing namespace metal;\nkernel void kb(device float *a [[buffer(0)]], uint i [[thread_position_in_grid]]) { a[i] = 1.0f; }"
+    #expect(a.count == b.count)
+    _ = try MetalContext.shared.pipeline("ka", source: a)
+    _ = try MetalContext.shared.pipeline("kb", source: b)
+    #expect(throws: AilbumError.self) { try MetalContext.shared.pipeline("kb", source: a) }
+}

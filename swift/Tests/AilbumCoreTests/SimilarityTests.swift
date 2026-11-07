@@ -84,3 +84,9 @@ private func photo(_ bits: Int, geometric: GeometricFeatures? = nil, hist: [Floa
         }
     }
 }
+
+@Test func testTimestampFormats() {
+    #expect(Similarity.timestamp("2024-01-01 10:00:00+00:00") == Similarity.timestamp("2024-01-01T10:00:00Z"))
+    #expect(Similarity.timestamp("2024-01-01T10:00:00.123") != nil)
+    #expect(Similarity.timestamp("garbage") == nil)
+}

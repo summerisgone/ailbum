@@ -67,7 +67,10 @@ public enum Similarity {
     }
 
     static func timestamp(_ value: String?) -> Double? {
-        guard let value else { return nil }
+        guard var value else { return nil }
+        if value.count > 10, value[value.index(value.startIndex, offsetBy: 10)] == " " {
+            value.replaceSubrange(value.index(value.startIndex, offsetBy: 10)...value.index(value.startIndex, offsetBy: 10), with: "T")
+        }
         let iso = ISO8601DateFormatter()
         for opts: ISO8601DateFormatter.Options in [[.withInternetDateTime], [.withInternetDateTime, .withFractionalSeconds]] {
             iso.formatOptions = opts
@@ -76,7 +79,7 @@ public enum Similarity {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = .current
-        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.SSSSSS", "yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
             f.dateFormat = fmt
             if let d = f.date(from: value) { return d.timeIntervalSince1970 }
         }
