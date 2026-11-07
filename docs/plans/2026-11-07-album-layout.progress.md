@@ -1,0 +1,70 @@
+- start 226949d66103a87e6009b1aa5641f8221ca07172
+- Ruling: design and plan live in two files, not one - plan cap 15k chars rides in prime - reader opens two files
+- Ruling: Detail contracts instead of full - verbatim tests would exceed plan size - implementers derive test bodies from named I/O
+- unblocked: dispatched T0 T1 T2 T3 T4 T5 T9 T12 T13 at 12:28:13; waiting on fixes: T7 T6 T8 T10 T11 T14
+- Ruling: agents read .superlite/prime.md instead of a pasted copy and receive their task in the first message - 35 KB x 9 pasted is wasteful - loses shared prompt cache prefix
+- Ruling: accept plan size over 15k - tasks already dispatched are frozen and carry binding contracts - prime stays 35 KB
+- unblocked: dispatched T8 T10 T11 at 12:28:57; waiting on fixes: none
+- tests fast passed=0 failed=1 skipped=0 seconds=0.7
+- tests fast passed=15 failed=2 skipped=0 seconds=0.2
+- tests fast passed=0 failed=1 skipped=0 seconds=2.4
+- commit T13 5d1ed702dd spread editor
+- tests fast passed=11 failed=1 skipped=0 seconds=0.2
+- commit T12 09368fcf63 wizard and navigation
+- Ruling: TS LayoutParams uses snake_case keys (spread_count, min_photos, max_photos) - T12 already built on them and they match the RPC table - T11 changes its naming
+- tests fast passed=17 failed=0 skipped=0 seconds=0.2
+- tests fast passed=11 failed=0 skipped=0 seconds=0.2
+- tests fast passed=11 failed=1 skipped=0 seconds=13.1
+- tests fast passed=0 failed=1 skipped=0 seconds=4.1
+- commit T1 25c6056d9c types and templates
+- tests full passed=0 failed=1 skipped=0 seconds=20.1
+- commit T2 70da1fd502 crop solver
+- commit T4 0e2368a6f1 story allocation
+- tests fast passed=18 failed=1 skipped=0 seconds=2.8
+- tests fast passed=14 failed=1 skipped=0 seconds=0.5
+- tests fast passed=0 failed=5 skipped=0 seconds=0.4
+- tests fast passed=26 failed=0 skipped=0 seconds=0.9
+- commit T3 5ce8dcd86c object detector
+- tests fast passed=0 failed=1 skipped=0 seconds=0.3
+- tests fast passed=26 failed=0 skipped=0 seconds=0.9
+- tests fast passed=5 failed=1 skipped=0 seconds=0.4
+- commit T5 dd5b1228dd schema and store
+- tests fast passed=13 failed=0 skipped=0 seconds=0.2
+- Ruling: T0 not committed - its stubs were replaced by owners and committing would capture in-flight task files - remaining stubs are owned by T6 T7 T8 T9 T10
+- commit T8 32b5b4aefc assistant and preview
+- Ruling: SpreadDraft gains assistant_reason: str | None = None (T7); T9 sets it with dataclasses.replace - spec section 6 persists it - small follow-up in T9 after T7
+- tests fast passed=0 failed=1 skipped=0 seconds=0.4
+- tests fast passed=26 failed=0 skipped=0 seconds=0.9
+- tests fast passed=20 failed=0 skipped=0 seconds=0.5
+- Ruling: tests/test_database.py one-line assert committed by coordinator - unowned by any task and blocks commit_task - none
+- commit T2 63cec6a25e crop solver
+- commit T9 ac855684de service
+- commit T8 c964402fae assistant and preview
+- commit T5 a2e615818b schema and store
+- tests fast passed=7 failed=0 skipped=0 seconds=0.4
+- tests fast passed=0 failed=1 skipped=0 seconds=0.5
+- commit T11 10e39ecb4d bridge, job and IPC
+- tests fast passed=0 failed=1 skipped=0 seconds=0.4
+- tests fast passed=14 failed=1 skipped=0 seconds=0.5
+- tests fast passed=15 failed=0 skipped=0 seconds=0.5
+- commit T10 1a0160b435 editing
+- tests fast passed=33 failed=0 skipped=0 seconds=0.5
+- commit T6 527f3e6ef3 photo facts
+- commit T7 78d7f0d424 composer
+- tests fast passed=50 failed=0 skipped=0 seconds=0.7
+- commit T7 dc7ca730d1 composer
+- Ruling: allocation counts clusters as units even when a short group later splits selected members - composer absorbs the difference - a tight library may leave a spread underfilled
+- PAUSED by user 12:36:07: T14 and F-T9-1 in flight were stopped; final review not run
+- resumed 14:30:36
+- tests fast passed=16 failed=0 skipped=1 seconds=0.8
+- tests fast passed=10 failed=0 skipped=7 seconds=0.5
+- commit T9 79b12ee6a9 service
+- tests fast passed=6 failed=4 skipped=0 seconds=1.8
+- tests fast passed=10 failed=0 skipped=0 seconds=1.8
+- commit T14 711e6f48c8 integration and docs
+- tests full passed=230 failed=2 skipped=1 seconds=5.4
+- Ruling: final-review probe findings (adapter getattr walk, bytes stdin) are tooling defects in .superlite/probes, not product - generated tests/regression removed - encoding of model replies covered by unit tests in test_layout_assistant.py instead of probes
+- Ruling: service._open_detector verified against real ObjectDetector on a copy of the user's library; assistant_reason is saved and loaded by store.py lines 76-85 and 165 - no change
+- Ruling: concurrent layout and analysis jobs share the existing activeJob guard in main.cjs, which refuses a second job - no extra probe
+- tests fast passed=27 failed=0 skipped=0 seconds=2.0
+- commit T10 1890f3d5bc editing
