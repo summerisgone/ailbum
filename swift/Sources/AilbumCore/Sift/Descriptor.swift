@@ -26,7 +26,8 @@ public enum SiftDescriptor {
         let scale = Float(pow(2.0, Double(-kp.octave)))
         let ptx = Int((kp.x * scale).rounded()), pty = Int((kp.y * scale).rounded())
         let scl = kp.size * 0.5 * scale
-        let ori = kp.angle < 0 ? 0 : kp.angle
+        var ori = 360 - kp.angle
+        if abs(ori - 360) < Float.ulpOfOne { ori = 0 }
         let d = Self.d, n = Self.n
 
         let cosT = Float(cos(Double(ori) * .pi / 180))

@@ -86,3 +86,16 @@ private func cosine(_ a: [Float], _ b: [Float]) -> Double {
         #expect(Array(all[i * 128..<(i + 1) * 128]) == SiftDescriptor.compute([kps[i]], space: s))
     }
 }
+
+@Test func testRotationSignMatchesOpenCV() {
+    // OpenCV uses ori = 360 - angle: exactly one of 90/270 aligns the rotated image
+    let n = 81
+    let a = noisy(n)
+    var rot = [Float](repeating: 0, count: n * n)
+    for y in 0..<n { for x in 0..<n { rot[y * n + x] = a.pixels[x * n + (n - 1 - y)] } }
+    let b = GrayImage(width: n, height: n, pixels: rot)
+    let da = SiftDescriptor.compute([kp(40, 40, angle: 0)], space: space(a))
+    let c90 = cosine(da, SiftDescriptor.compute([kp(40, 40, angle: 90)], space: space(b)))
+    let c270 = cosine(da, SiftDescriptor.compute([kp(40, 40, angle: 270)], space: space(b)))
+    #expect(c270 >= 0.95 && c90 < 0.9)
+}
