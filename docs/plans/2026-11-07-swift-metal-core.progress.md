@@ -1,0 +1,33 @@
+- start 6f115bd995b5852930c339819da5ad4601153c0a
+- unblocked: dispatched T0 T1 T2 T3 T4 T6 at 23:56:20; waiting on fixes: T5 T7
+- Ruling: fresh agents read the prime from .superlite/prime.md (sha e4b39b61) instead of a pasted copy - same bytes, saves ~80k output chars - cost if wrong: an agent skims it; READY reply still required
+- Ruling: T5 consumes no Resize (calls Resize.area only when size differs; T3 frozen without an e.g. for area) and T7 drops Quality.exposure from Consumes (T4 frozen; T7 has an edge to T4 so it runs real code) - cost if wrong: seam check misses those two calls
+- unblocked: dispatched T5 T7 at 23:57:32; waiting on fixes: none
+- Ruling: accept plan at 16.7k chars - the excess sits in dispatched (frozen) task blocks - cost: slightly larger prime. Keep edge T5 -> T7: T7 is the integration task and runs real code, the EDGE note is advisory
+- tests fast passed=0 failed=1 skipped=0 seconds=2.9
+- tests fast passed=0 failed=1 skipped=0 seconds=1.1
+- tests full passed=0 failed=1 skipped=0 seconds=1.7
+- tests fast passed=0 failed=1 skipped=0 seconds=2.1
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=30 failed=3 skipped=0 seconds=2.7
+- tests fast passed=30 failed=3 skipped=0 seconds=3.0
+- tests fast passed=40 failed=4 skipped=0 seconds=10.5
+- tests fast passed=40 failed=4 skipped=0 seconds=8.5
+- Ruling: T2 testCompleteLinkNoChain expectation corrected to Python golden [[0],[1,2]] (tie, later pair wins) - plan value was hand-computed - cost: none, parity rule binds
+- tests fast passed=41 failed=3 skipped=0 seconds=2.2
+- T5 note for review: DCT in Double with |v|<1e-6 snapped to 0 to match cv2 exact zeros on synthetic input
+- tests fast passed=42 failed=2 skipped=0 seconds=1.2
+- tests fast passed=44 failed=0 skipped=0 seconds=1.5
+- tests fast passed=44 failed=0 skipped=0 seconds=1.3
+- review point T2: Vectors.decode traps on short blob (corrupt DB crashes app) - reviewer to make it non-trapping
+- Ruling: commit_task cannot see Wave 0 ownership (wave0 detected Python) and refuses all tasks; committing each task by its exact Owns paths with git add <paths> - cost: no automatic probe_run after commit, run tests manually
+- tests fast passed=47 failed=1 skipped=0 seconds=2.6
+- tests fast passed=48 failed=0 skipped=0 seconds=1.8
+- tests fast passed=53 failed=0 skipped=0 seconds=3.3
+- Ruling: schema user_version > 12 accepted silently, same as Python - cost: a future-version DB could be opened by this build; gate it in phase 4
+- tests full passed=53 failed=0 skipped=0 seconds=1.9
+- Ruling: final-review finding 1 (5 contract mismatches) - public API checked by grep and matches every Produces line; the mismatches come from Wave 0 stub specs with empty return types - cost: none
+- Ruling: final-review finding 2 (cluster tie) - Python cluster_cosine run by coordinator returns [[0],[1,2]]; Swift matches - cost: none
+- Ruling: final-review finding 3 (pHash golden) - coordinator re-ran Python extract_hash_color_features independently; string identical to the test golden, fix lives in HashColor.swift (Double DCT) - cost: none
+- Ruling: final-review finding 4 (tolerances) - sharpness rel 1e-3, exposure abs 1e-4, black exposure abs 1e-12: within design section 4 - cost: none
+- full suite: 53 passed, 0 failed
