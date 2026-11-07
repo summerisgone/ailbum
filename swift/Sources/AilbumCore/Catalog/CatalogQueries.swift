@@ -17,7 +17,7 @@ public enum CatalogQueries {
     }
 
     private static func parse(_ text: String) throws -> JSONValue {
-        try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+        try JSONValue.parse(text)
     }
 
     /// Python `json.loads(value) if value else None`.

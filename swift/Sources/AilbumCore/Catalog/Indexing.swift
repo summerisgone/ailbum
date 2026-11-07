@@ -30,9 +30,7 @@ public enum Catalog {
 
     /// Compact JSON like Python `json.dumps(ensure_ascii=False, separators=(",", ":"))`.
     private static func jsonText(_ value: JSONValue) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return String(decoding: try encoder.encode(value), as: UTF8.self)
+        AnalysisStore.json(value)
     }
 
     private static func opt(_ s: String?) -> SQLValue { s.map { .text($0) } ?? .null }

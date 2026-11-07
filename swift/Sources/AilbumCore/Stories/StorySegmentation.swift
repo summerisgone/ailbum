@@ -10,6 +10,7 @@ public enum StorySegmentation {
     /// Half-open burst index ranges, as `_segment_bursts` slices them.
     public static func segment(_ bursts: [StoryBurst], continuityMinutes: Int, maxDurationHours: Int) -> [(Int, Int)] {
         let count = bursts.count
+        if count == 0 { return [] }
         if count == 1 { return [(0, 1)] }
         let vectors = bursts.map { $0.vector ?? [] }
         let dim = vectors[0].count

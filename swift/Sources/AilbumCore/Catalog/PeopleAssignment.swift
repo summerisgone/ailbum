@@ -125,7 +125,7 @@ extension AnalysisStore {
         let configRow = try db.query("SELECT config_json FROM analysis_runs WHERE id = ?", [.text(runId)])
         var config: [String: JSONValue] = [:]
         if case .text(let text)? = configRow.first?["config_json"],
-           let value = try? JSONDecoder().decode(JSONValue.self, from: Data(text.utf8)),
+           let value = try? JSONValue.parse(text),
            let object = value.objectValue {
             config = object
         }
@@ -138,7 +138,7 @@ extension AnalysisStore {
             let file = textValue(row["file_name"]) ?? ""
             return StoryPhoto(
                 photoId: textValue(row["photo_id"]) ?? "",
-                takenAt: nonEmpty(textValue(row["taken_at"])) ?? filenameTakenAt(file)
+                takenAt: nonEmpty(textValue(row["taken_at"])) ?? Metadata.filenameTakenAt(file)
                     ?? nonEmpty(textValue(row["modified_at"])),
                 gpsLatitude: doubleValue(row["gps_latitude"]),
                 gpsLongitude: doubleValue(row["gps_longitude"]),
@@ -158,6 +158,7 @@ extension AnalysisStore {
             backend: config["story_naming_backend"]?.stringValue ?? "auto",
             baseURL: config["lmstudio_url"]?.stringValue ?? "http://127.0.0.1:1234/v1",
             model: config["lmstudio_model"]?.stringValue ?? "qwen/qwen3-vl-2b",
+            maxImages: configInt(config, "story_vlm_images", 4),
             timeout: config["story_vlm_timeout"]?.doubleValue ?? 90.0)
         var paths: [String: String] = [:]
         for row in rows { paths[textValue(row["photo_id"]) ?? ""] = textValue(row["path"]) ?? "" }
@@ -184,7 +185,7 @@ extension AnalysisStore {
         let embeddings: [[Float]] = rows.compactMap { row in
             guard case .blob(let blob)? = row["embedding"], let dim = intValue(row["embedding_dim"]) else { return nil }
             return Vectors.decode(blob, dimension: dim)
-        }
+        }.filter { !$0.isEmpty }
         guard let first = embeddings.first else { return }
         var centroid = [Float](repeating: 0, count: first.count)
         for embedding in embeddings {
@@ -231,7 +232,9 @@ extension AnalysisStore {
     }
 
     private static func configInt(_ config: [String: JSONValue], _ key: String, _ fallback: Int) -> Int {
-        config[key]?.intValue ?? config[key]?.doubleValue.map { Int($0) } ?? fallback
+        if let v = config[key]?.intValue { return v }
+        if let d = config[key]?.doubleValue, d.isFinite { return Int(max(-9e18, min(9e18, d))) }
+        return fallback
     }
 
     /// Python `json.dumps(list[str], ensure_ascii=False, separators=(",", ":"))`.
@@ -243,7 +246,7 @@ extension AnalysisStore {
     /// Port of `_tag_pairs`.
     private static func tagPairs(_ text: String?) -> [TagRecord] {
         let source = nonEmpty(text) ?? "[]"
-        guard let items = (try? JSONDecoder().decode(JSONValue.self, from: Data(source.utf8)))?.arrayValue
+        guard let items = (try? JSONValue.parse(source))?.arrayValue
         else { return [] }
         var result: [TagRecord] = []
         for item in items {
@@ -258,23 +261,4 @@ extension AnalysisStore {
         return result
     }
 
-    /// Port of metadata `_filename_taken_at`.
-    private static func filenameTakenAt(_ name: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: #"(?<!\d)(20\d{6})[_-]?(\d{6})(?!\d)"#),
-              let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
-              let dateRange = Range(match.range(at: 1), in: name),
-              let timeRange = Range(match.range(at: 2), in: name) else { return nil }
-        let d = Array(name[dateRange]).compactMap { $0.wholeNumberValue }
-        let t = Array(name[timeRange]).compactMap { $0.wholeNumberValue }
-        let year = d[0] * 1000 + d[1] * 100 + d[2] * 10 + d[3]
-        let month = d[4] * 10 + d[5], day = d[6] * 10 + d[7]
-        let hour = t[0] * 10 + t[1], minute = t[2] * 10 + t[3], second = t[4] * 10 + t[5]
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let components = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
-        guard hour < 24, minute < 60, second < 60, calendar.date(from: components) != nil,
-              calendar.dateComponents([.month, .day], from: calendar.date(from: components)!) ==
-                DateComponents(month: month, day: day) else { return nil }
-        return String(format: "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second)
-    }
 }

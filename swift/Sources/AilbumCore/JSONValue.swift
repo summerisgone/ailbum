@@ -18,6 +18,13 @@ public enum JSONValue: Equatable, Codable {
         }
     }
 
+    /// Python `json.loads`: also accepts NaN/Infinity tokens that Python writes.
+    public static func parse(_ text: String) throws -> JSONValue {
+        let decoder = JSONDecoder()
+        decoder.allowsJSON5 = true
+        return try decoder.decode(JSONValue.self, from: Data(text.utf8))
+    }
+
     public static func row(_ r: [String: SQLValue]) -> JSONValue {
         .object(r.mapValues { JSONValue($0) })
     }

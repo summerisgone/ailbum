@@ -143,3 +143,36 @@ private func count(_ db: Database, _ table: String) throws -> Int {
     #expect(rows[0]["scene_tags_json"] == .text(#"["пляж"]"#))
     #expect(rows[0]["object_tags_json"] == .text("[]"))
 }
+
+@Test func testEnsureStoriesHonoursVlmImagesConfig() throws {
+    let db = try openDB()
+    try seedRun(db, "r1", config: #"{"story_naming_backend":"off","story_vlm_images":9}"#)
+    try seedPhoto(db, "r1", 1, takenAt: "2024-05-01T10:00:00")
+    #expect(throws: AilbumError.self) { try AnalysisStore.ensureStories(db, runId: "r1") }
+}
+
+@Test func testEnsureStoriesHugeConfigNumbersDoNotTrap() throws {
+    let db = try openDB()
+    try seedRun(db, "r1", config: #"{"story_naming_backend":"off","story_gap_minutes":1e30,"story_continuity_minutes":1e30}"#)
+    try seedPhoto(db, "r1", 1, takenAt: "2024-05-01T10:00:00")
+    try AnalysisStore.ensureStories(db, runId: "r1")
+    #expect(try count(db, "stories") == 1)
+}
+
+@Test func testRefreshCentroidKeepsCentroidWhenEmbeddingsAreCorrupt() throws {
+    let db = try openDB()
+    try seedRun(db, "r1")
+    try seedPhoto(db, "r1", 1, takenAt: nil)
+    try db.execute(
+        "INSERT INTO people VALUES (1, 'u1', NULL, 'm', ?, 2, 't', 't')", [.blob(Vectors.encode([1, 0])!)])
+    try db.execute(
+        """
+        INSERT INTO faces (run_id, image_id, face_id, face_index, bbox_x, bbox_y, bbox_width, bbox_height,
+            confidence, person_id, embedding, embedding_dim, embedding_model)
+        VALUES ('r1', 1, 'f', 1, 0, 0, 1, 1, 1.0, 1, ?, 8, 'm')
+        """, [.blob(Data([1, 2, 3]))])
+    try AnalysisStore.refreshCentroid(db, personId: 1)
+    let row = try db.query("SELECT centroid_embedding, embedding_dim FROM people WHERE id = 1", [])[0]
+    #expect(row["centroid_embedding"] == .blob(Vectors.encode([1, 0])!))
+    #expect(row["embedding_dim"] == .integer(2))
+}

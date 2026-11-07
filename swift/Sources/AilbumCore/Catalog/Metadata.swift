@@ -210,7 +210,7 @@ public enum Metadata {
     private static func asInt(_ value: JSONValue?) -> Int? {
         switch value {
         case .int(let i)?: return i
-        case .double(let d)?: return d.isFinite ? Int(d) : nil
+        case .double(let d)?: return d.isFinite && abs(d) < 9e18 ? Int(d) : nil
         default: return nil
         }
     }
@@ -280,12 +280,13 @@ public enum Metadata {
         return s
     }
 
-    private static func filenameTakenAt(_ name: String) -> String? {
+    static func filenameTakenAt(_ name: String) -> String? {
         let re = try! NSRegularExpression(pattern: #"(?<!\d)(20\d{6})[_-]?(\d{6})(?!\d)"#)
         let ns = name as NSString
         guard let m = re.firstMatch(in: name, range: NSRange(location: 0, length: ns.length)) else { return nil }
         let d = ns.substring(with: m.range(at: 1)), t = ns.substring(with: m.range(at: 2))
-        let digits = Array(d + t).map { Int(String($0))! }
+        let digits = Array(d + t).compactMap { $0.wholeNumberValue }
+        guard digits.count == 14 else { return nil }
         func num(_ a: Int, _ b: Int) -> Int { digits[a..<b].reduce(0) { $0 * 10 + $1 } }
         let n = [num(0, 4), num(4, 6), num(6, 8), num(8, 10), num(10, 12), num(12, 14)]
         guard validDateTime(n) else { return nil }

@@ -24,7 +24,7 @@ public enum PeopleStore {
         var object = JSONValue.row(row).objectValue ?? [:]
         let scores = object.removeValue(forKey: "expression_scores_json")
         if let raw = scores?.stringValue, !raw.isEmpty,
-           let parsed = try? JSONDecoder().decode(JSONValue.self, from: Data(raw.utf8)) {
+           let parsed = try? JSONValue.parse(raw) {
             object["expression_scores"] = parsed
         } else {
             object["expression_scores"] = .null
@@ -281,7 +281,7 @@ public enum PeopleStore {
         ctx.setFillColor(CGColor(srgbRed: 28 / 255, green: 30 / 255, blue: 34 / 255, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-        let title = person["name"]?.stringValue ?? "Person \(personId)"
+        let title = person["name"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? "Person \(personId)"
         let attributed = NSAttributedString(string: "\(title) · \(unique.count) faces", attributes: [
             kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
             kCTFontAttributeName as NSAttributedString.Key: CTFontCreateWithName("Helvetica" as CFString, 14, nil),

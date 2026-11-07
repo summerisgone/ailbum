@@ -139,7 +139,10 @@ public enum AnalysisStore {
             + "\"center\":[\(number(s.center.x)),\(number(s.center.y))],\"source\":\(quote(s.source))}"
     }
 
-    private static func number(_ d: Double) -> String { "\(d)" }
+    /// Python `json.dumps` writes NaN/Infinity tokens for non-finite floats.
+    private static func number(_ d: Double) -> String {
+        d.isNaN ? "NaN" : d.isInfinite ? (d < 0 ? "-Infinity" : "Infinity") : "\(d)"
+    }
 
     private static func quote(_ s: String) -> String {
         let encoder = JSONEncoder()
