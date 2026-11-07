@@ -167,3 +167,37 @@ def test_confirm_missing(env):
     assert archive.confirm_missing(db, [1, 2]) == 1
     with connect(db) as c:
         assert c.execute("SELECT availability FROM images WHERE id=1").fetchone()[0] == "archived"
+
+
+def test_osascript_fallback_escapes_cyrillic_quotes_spaces(monkeypatch):
+    import subprocess
+    import sys
+
+    monkeypatch.setitem(sys.modules, "send2trash", None)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    scripts = []
+
+    def fake_run(cmd, **kwargs):
+        scripts.append(cmd[2])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    path = '/Users/я/Мои фото/a "b" \\c.jpg'
+    assert archive.trash_paths([path]) == [path]
+    assert scripts == [
+        'tell application "Finder" to delete POSIX file "/Users/я/Мои фото/a \\"b\\" \\\\c.jpg"'
+    ]
+
+
+def test_prepare_builds_face_proxies_for_album_images(env, tmp_path):
+    db, src = env
+    add_image(db, src, 1)
+    a = make_album(db, [1])
+    with connect(db) as c:
+        c.execute(
+            "INSERT INTO faces (id, run_id, image_id, face_id, face_index, bbox_x, bbox_y,"
+            " bbox_width, bbox_height, confidence) VALUES (7, 'r1', 1, 'f', 0, 10, 10, 20, 20, 1)"
+        )
+    export_originals(db, a, tmp_path)
+    r = archive.prepare_archive(db, a)
+    assert r["blocked"] == [] and len(r["trash"]) == 1
+    assert (db.parent / "proxies" / "faces" / "7.jpg").is_file()
