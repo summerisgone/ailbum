@@ -192,7 +192,11 @@ async function faceThumbnailFor(faceId, face) {
   }
   thumbnail = bridge
     .request("face.thumbnail", { face_id: faceId })
-    .then((result) => Buffer.from(result.base64, "base64"));
+    .then((result) => Buffer.from(result.base64, "base64"))
+    .catch((error) => {
+      thumbnailCache.delete(cacheKey);
+      throw error;
+    });
   thumbnailCache.set(cacheKey, thumbnail);
   if (thumbnailCache.size > THUMBNAIL_CACHE_LIMIT) {
     thumbnailCache.delete(thumbnailCache.keys().next().value);
@@ -546,7 +550,7 @@ app.whenReady().then(() => {
     startDatabaseJob("layout", [], { albumId: Number(albumId), params: params || {} }),
   );
   ipcMain.handle("layout:preflight", (_event, { albumId, params }) =>
-    bridge.request("layout.preflight", { album_id: Number(albumId), ...params }),
+    bridge.request("layout.preflight", { ...params, album_id: Number(albumId) }),
   );
   ipcMain.handle("layout:get", (_event, { albumId }) =>
     bridge.request("layout.get", { album_id: Number(albumId) }),
