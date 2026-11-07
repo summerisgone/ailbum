@@ -82,6 +82,20 @@ def test_archive_confirmation(db, capsys, monkeypatch):
     assert '"archived": 1' in capsys.readouterr().out
 
 
+def test_archive_eof_cancels(db, capsys, monkeypatch):
+    monkeypatch.setattr(
+        "ailbum.archive.prepare_archive",
+        lambda d, a: {"album_id": a, "needs_export": False, "trash": ["/p/a.jpg"], "blocked": []},
+    )
+
+    def eof(prompt):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", eof)
+    run(["album", "archive", "1"], db)
+    assert "Отменено" in capsys.readouterr().out
+
+
 def test_forget_requires_yes(db, capsys, monkeypatch):
     fake = types.ModuleType("ailbum.forget")
     done = []

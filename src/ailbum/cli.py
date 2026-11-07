@@ -260,7 +260,10 @@ def _album_command(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         paths = plan["trash"]
         if paths and not args.yes:
-            answer = input(f"Перенести {len(paths)} файлов в Корзину? [y/N] ")
+            try:
+                answer = input(f"Перенести {len(paths)} файлов в Корзину? [y/N] ")
+            except EOFError:
+                answer = ""
             if answer.strip().lower() not in ("y", "yes", "д", "да"):
                 print("Отменено")
                 return
