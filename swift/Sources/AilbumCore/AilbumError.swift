@@ -3,5 +3,6 @@ public enum AilbumError: Error, Equatable {
     case schemaTooOld(Int)
     case decode(String)
     case metal(String)
+    case invalid(String)
 }
 
