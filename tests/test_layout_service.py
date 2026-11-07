@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import json
 import os
 import sys
 import types
@@ -10,8 +9,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from PIL import Image
 
-from ailbum.database import connect
+from ailbum.database import connect, save_analysis
+from ailbum.metadata import collect_image_metadata
+from ailbum.models import PhotoRecord, StoryRecord
 
 REAL = os.environ.get("SUPERLITE_REAL") == "1"
 
@@ -59,6 +61,9 @@ class FakeSpread:
     template_id: str
     placements: list[FakePlacement]
     story_ids: tuple[int, ...] = ()
+    warnings: tuple[str, ...] = ()
+    alternatives: tuple[FakeSpread, ...] = ()
+    assistant_reason: str | None = None
 
 
 @dataclass(slots=True)
@@ -127,39 +132,70 @@ class FakeAssistant:
 
 
 class Env:
-    def __init__(self, db: Path) -> None:
-        self.db = db
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.db = root / "a.sqlite"
         self.pool: list[FakePhoto] = []
         self.load_pool_args: list[Any] = []
         self.saved: dict[str, Any] = {}
         self.composed: list[FakeComposed] = []
-        self.variants: list[FakeSpread] = []
+        self.alts: list[FakeSpread] = []
         self.seen: list[list[int]] = []
+
+
+TITLES = {1: "Ужин", 2: "Прогулка"}
+
+
+def _seed(e: Env, per_story: dict[int | None, int]) -> None:
+    source = e.root / "photos"
+    source.mkdir(exist_ok=True)
+    records, metadata = [], []
+    for story, count in per_story.items():
+        for _ in range(count):
+            n = len(records) + 1
+            size = (300, 200) if n % 2 else (200, 300)
+            path = source / f"{n}.jpg"
+            Image.new("RGB", size, (n * 5 % 255, 80, 120)).save(path)
+            day = story or 9
+            records.append(
+                PhotoRecord(
+                    f"p{n}", str(path.resolve()), size[0], size[1],
+                    f"2024-01-0{day}T10:{n:02d}:00", 100.0, 1.0, 0.8, False,
+                    story_id=story, selected=True,
+                )
+            )
+            metadata.append(collect_image_metadata(path, source))
+    stories = [
+        StoryRecord(
+            sid, TITLES[sid],
+            [r.photo_id for r in records if r.story_id == sid],
+            f"2024-01-0{sid}T10:00:00", f"2024-01-0{sid}T11:00:00",
+            next(r.photo_id for r in records if r.story_id == sid),
+        )
+        for sid in per_story
+        if sid is not None
+    ]
+    manifest = {
+        "run_id": "r", "started_at": "t", "generated_at": "t", "face_backend": "x",
+        "config": {"lmstudio_url": "http://x/v1", "lmstudio_model": "m1"}, "summary": {},
+    }
+    save_analysis(e.db, source, e.root / "o", manifest, records, [], metadata, 0.8, stories)
+    with connect(e.db) as c:
+        for i, r in enumerate(records, 1):
+            c.execute(
+                "INSERT INTO photo_selections VALUES ('r', ?, 't', ?)", (i, i)
+            )
+    e.pool = [
+        FakePhoto(i, f"image:{i}", r.story_id) for i, r in enumerate(records, 1)
+    ]
+
+
+fake_only = pytest.mark.skipif(REAL, reason="uses fakes for producers")
 
 
 @pytest.fixture
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
-    db = tmp_path / "a.sqlite"
-    with connect(db) as c:
-        c.execute(
-            "INSERT INTO analysis_runs VALUES ('r','s','o','t','t','f',?, '{}','completed')",
-            (json.dumps({"lmstudio_url": "http://x/v1", "lmstudio_model": "m1"}),),
-        )
-        for sid, title, start in [(1, "Ужин", "2024-01-01"), (2, "Прогулка", "2024-01-02")]:
-            c.execute(
-                "INSERT INTO stories (run_id, story_id, title, started_at, ended_at)"
-                " VALUES ('r', ?, ?, ?, ?)",
-                (sid, title, start, start),
-            )
-        for i in range(1, 41):
-            c.execute(
-                "INSERT INTO images (id, path, source_root, relative_path, file_name,"
-                " extension, file_size_bytes, modified_at, sha256, exif_json,"
-                " container_metadata_json, indexed_at) VALUES"
-                " (?, ?, '/', ?, ?, 'jpg', 1, 't', 'h', '{}', '{}', 't')",
-                (i, f"/p/{i}.jpg", f"{i}.jpg", f"{i}.jpg"),
-            )
-    e = Env(db)
+    e = Env(tmp_path)
     if REAL:
         return e
 
@@ -171,19 +207,25 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
 
     def fake_allocate(groups, spread_count, min_photos, max_photos):
         return [
-            FakeAllocation(g.story_ids, g.unit_count, 1 if i else spread_count - len(groups) + 1, False)
+            FakeAllocation(
+                g.story_ids, g.unit_count, 1 if i else spread_count - len(groups) + 1, False
+            )
             for i, g in enumerate(groups)
         ]
 
     def fake_compose(photos, allocation, params):
         e.seen.append([p.image_id for p in photos])
-        e.composed.append(
-            FakeComposed(
-                [FakeSpread("page_2h", [FakePlacement(p.image_id) for p in photos[:3]])],
-                [{"image_id": 99, "reason": "capacity"}],
-            )
+        placements = [FakePlacement(p.image_id) for p in photos[:3]]
+        alt = FakeSpread(
+            "alt", placements, allocation.story_ids, ("replaced",), (), None
         )
-        return e.composed[-1]
+        e.alts.append(alt)
+        composed = FakeComposed(
+            [FakeSpread("page_2h", placements, allocation.story_ids, (), (alt,))],
+            [{"image_id": 99, "reason": "capacity"}],
+        )
+        e.composed.append(composed)
+        return composed
 
     def fake_save(connection, run_id, params, spreads, unplaced, warnings, sel, model):
         e.saved = {
@@ -198,11 +240,9 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
     FakeAssistant.connected = True
     FakeAssistant.choice = FakeChoice(1, "лучше")
     FakeAssistant.raises = False
-    e.variants = [FakeSpread("a", []), FakeSpread("b", [])]
     monkeypatch.setattr(service, "load_pool", fake_load_pool)
     monkeypatch.setattr(service, "allocate_spreads", fake_allocate)
     monkeypatch.setattr(service, "compose_group", fake_compose)
-    monkeypatch.setattr(service, "best_variants", lambda photos, params, limit=3: e.variants)
     monkeypatch.setattr(service, "save_layout", fake_save)
     monkeypatch.setattr(service, "selection_hash", lambda c, r: "h")
     monkeypatch.setattr(service, "load_layout", lambda c, r: {"spreads": e.saved["spreads"]})
@@ -212,24 +252,24 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Env:
 
 
 def _pool(e: Env, per_story: dict[int | None, int]) -> None:
-    image_id = 1
-    e.pool = []
-    for story, count in per_story.items():
-        for _ in range(count):
-            e.pool.append(FakePhoto(image_id, f"image:{image_id}", story))
-            image_id += 1
+    _seed(e, per_story)
 
 
 def test_preflight_counts_units_not_photos(env: Env) -> None:
-    env.pool = [
-        FakePhoto(1, "cluster:3", 1),
-        FakePhoto(2, "cluster:3", 1, selected=False),
-        FakePhoto(3, "cluster:3", 1, selected=False),
-        FakePhoto(4, "image:4", 2),
-    ]
+    _pool(env, {1: 3, 2: 1})
+    if not REAL:
+        env.pool = [
+            FakePhoto(1, "cluster:3", 1),
+            FakePhoto(2, "cluster:3", 1, selected=False),
+            FakePhoto(3, "cluster:3", 1, selected=False),
+            FakePhoto(4, "image:4", 2),
+        ]
     result = service.preflight(env.db, "r", LayoutParams("vertical", 2, 1, 6))
     assert result["pool_count"] == 4
-    assert result["unit_count"] == 2
+    if REAL:
+        assert result["unit_count"] == 4
+    else:
+        assert result["unit_count"] == 2
     assert result["story_count"] == 2
 
 
@@ -278,11 +318,12 @@ def test_generate_invalid_params_raises(env: Env) -> None:
 
 
 def test_generate_empty_selection_raises(env: Env) -> None:
-    env.pool = []
+    _pool(env, {})
     with pytest.raises(ValueError):
         service.generate(env.db, "r", LayoutParams("vertical", 2, 3, 6), None)
 
 
+@fake_only
 def test_generate_spread_count_exact(env: Env) -> None:
     _pool(env, {1: 12, 2: 8})
     events: list[tuple] = []
@@ -298,6 +339,15 @@ def test_generate_spread_count_exact(env: Env) -> None:
     assert {e[0] for e in events} >= {"Анализ объектов", "Компоновка"}
 
 
+def test_generate_real_spread_count_exact(env: Env) -> None:
+    if not REAL:
+        pytest.skip("real producers only")
+    _pool(env, {1: 12, 2: 8})
+    layout = service.generate(env.db, "r", LayoutParams("vertical", 5, 3, 6, "off"), None)
+    assert len(layout["spreads"]) == 5
+
+
+@fake_only
 def test_assistant_off_never_connects(env: Env) -> None:
     _pool(env, {1: 6})
     service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "off"), None)
@@ -306,16 +356,29 @@ def test_assistant_off_never_connects(env: Env) -> None:
     assert service.ASSISTANT_WARNING not in env.saved["warnings"]
 
 
+@fake_only
 def test_assistant_uses_run_config_and_choice(env: Env) -> None:
     _pool(env, {1: 6, 2: 6})
     service.generate(env.db, "r", LayoutParams("vertical", 2, 3, 6, "auto"), None)
     bot = FakeAssistant.instances[0]
     assert (bot.base_url, bot.model) == ("http://x/v1", "m1")
     assert env.saved["model"] == "m1"
-    assert env.saved["spreads"][0] is env.variants[1]
-    assert FakeAssistant.instances[0].titles == ["Ужин", "Прогулка"]
+    assert bot.titles == ["Ужин", "Прогулка"]
 
 
+@fake_only
+def test_assistant_choice_keeps_replacement_and_reason(env: Env) -> None:
+    _pool(env, {1: 6})
+    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "auto"), None)
+    saved = env.saved["spreads"][0]
+    alt = env.alts[0]
+    assert saved.template_id == "alt"
+    assert saved.warnings == ("replaced",)
+    assert saved.story_ids == alt.story_ids == (1,)
+    assert saved.assistant_reason == "лучше"
+
+
+@fake_only
 def test_assistant_failure_keeps_engine_choice(env: Env) -> None:
     _pool(env, {1: 6})
     FakeAssistant.raises = True
@@ -327,6 +390,7 @@ def test_assistant_failure_keeps_engine_choice(env: Env) -> None:
     assert env.saved["spreads"][0] is env.composed[1].spreads[0]
 
 
+@fake_only
 def test_assistant_server_down_warns(env: Env) -> None:
     _pool(env, {1: 6})
     FakeAssistant.connected = False
@@ -336,13 +400,17 @@ def test_assistant_server_down_warns(env: Env) -> None:
     assert FakeAssistant.instances[0].choose_calls == 0
 
 
-def test_no_detector_model_warns(env: Env, tmp_path: Path) -> None:
+def test_no_detector_model_warns(env: Env) -> None:
     _pool(env, {1: 6})
-    service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "off"), None)
-    assert service.DETECTOR_WARNING in env.saved["warnings"]
-    assert env.load_pool_args == [None]
+    layout = service.generate(env.db, "r", LayoutParams("vertical", 1, 3, 6, "off"), None)
+    if REAL:
+        assert service.DETECTOR_WARNING in layout["warnings"]
+    else:
+        assert service.DETECTOR_WARNING in env.saved["warnings"]
+        assert env.load_pool_args == [None]
 
 
+@fake_only
 def test_untimed_group_photos_not_lost(env: Env) -> None:
     _pool(env, {1: 4, None: 2})
     service.generate(env.db, "r", LayoutParams("vertical", 2, 1, 6, "off"), None)

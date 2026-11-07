@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from ailbum.database import connect
 from ailbum.layout.allocation import StoryGroup, allocate_spreads
 from ailbum.layout.assistant import LayoutAssistant
-from ailbum.layout.composer import best_variants, compose_group
+from ailbum.layout.composer import compose_group
 from ailbum.layout.facts import load_pool
 from ailbum.layout.store import load_layout, save_layout, selection_hash
 from ailbum.layout.types import LayoutParams
@@ -79,7 +80,7 @@ def generate(
             title = " + ".join(titles[key] for key in taken if titles.get(key))
             for spread in composed.spreads:
                 spreads.append(
-                    _refine(spread, photos, params, assistant, paths, title, report)
+                    _refine(spread, params, assistant, paths, title, report)
                 )
         report("Компоновка", "Компоновка", total, total)
 
@@ -99,7 +100,6 @@ def generate(
 
 def _refine(
     spread: Any,
-    photos: list[Any],
     params: LayoutParams,
     assistant: LayoutAssistant | None,
     paths: dict[int, str],
@@ -109,10 +109,8 @@ def _refine(
     if assistant is None:
         return spread
     report("AI-редактор", "AI-редактор", None, None)
-    placed = {placement.image_id for placement in spread.placements}
-    pool = [photo for photo in photos if photo.image_id in placed]
     try:
-        variants = best_variants(pool, params, 3)
+        variants = [spread, *spread.alternatives]
         if len(variants) < 2:
             return spread
         choice = assistant.choose(variants, paths, params.orientation, title)
@@ -120,7 +118,7 @@ def _refine(
         return spread
     if choice is None or not 0 <= choice.index < len(variants):
         return spread
-    return variants[choice.index]
+    return replace(variants[choice.index], assistant_reason=choice.reason)
 
 
 def _validate(params: LayoutParams, unit_count: int) -> list[str]:
