@@ -176,3 +176,56 @@ def test_fresh_db_v12(tmp_path: Path) -> None:
         assert "availability" in cols and "missing" not in cols
         assert {"album_id", "prompt"} <= {r[1] for r in c.execute("PRAGMA table_info(layouts)")}
         assert c.execute("PRAGMA user_version").fetchone()[0] == 12
+
+
+def test_failure_mid_migration_keeps_v11(v11: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import ailbum.migrations as m
+
+    real = m._rebuild
+
+    def boom(connection, table, sql):
+        if table == "layouts":
+            raise RuntimeError("boom")
+        real(connection, table, sql)
+
+    monkeypatch.setattr(m, "_rebuild", boom)
+    with pytest.raises(RuntimeError):
+        with connect(v11):
+            pass
+    raw = sqlite3.connect(v11)
+    assert "missing" in {r[1] for r in raw.execute("PRAGMA table_info(images)")}
+    assert raw.execute("SELECT COUNT(*) FROM photo_selections").fetchone()[0] == 3
+    assert raw.execute("SELECT COUNT(*) FROM desktop_run_settings").fetchone()[0] == 1
+    assert raw.execute("SELECT COUNT(*) FROM albums").fetchone()[0] == 0
+    assert not [r for r in raw.execute("SELECT name FROM sqlite_master") if r[0].endswith("_new")]
+    assert raw.execute("PRAGMA user_version").fetchone()[0] == 11
+    raw.close()
+    monkeypatch.setattr(m, "_rebuild", real)
+    with connect(v11) as c:
+        assert c.execute("SELECT COUNT(*) FROM albums").fetchone()[0] == 2
+
+
+def test_selection_hash_and_wal_preserved(v11: Path) -> None:
+    import hashlib
+
+    with connect(v11) as c:
+        assert c.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        ids = [r[0] for r in c.execute(
+            "SELECT image_id FROM album_photos JOIN albums a ON a.id = album_id "
+            "WHERE a.run_id = 'r1' ORDER BY image_id")]
+        assert ids == [1, 2, 4]
+        assert hashlib.sha256(b"1,2,4").hexdigest() == hashlib.sha256(
+            ",".join(map(str, ids)).encode()).hexdigest()
+        assert c.execute("SELECT selection_hash FROM layouts").fetchone()[0] == "h"
+
+
+def test_fk_actions_after_migration(v11: Path) -> None:
+    with connect(v11) as c:
+        actions = {}
+        for t in ("photo_analysis", "faces", "layout_placements", "album_photos",
+                  "selection_events", "image_object_scans"):
+            for r in c.execute(f"PRAGMA foreign_key_list({t})"):
+                if r["table"] == "images":
+                    actions[t] = r["on_delete"]
+        assert actions == {t: "RESTRICT" for t in actions} | {"image_object_scans": "CASCADE"}
+        assert len(actions) == 6
