@@ -210,6 +210,8 @@ def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
         )
     if action == "face.thumbnail":
         data = proxies.face_thumbnail(database, int(payload["face_id"]))
+        if data is None:
+            return None
         return {"mime_type": "image/jpeg", "base64": base64.b64encode(data).decode()}
     if action.startswith("layout."):
         return _dispatch_layout(database, action, payload)
