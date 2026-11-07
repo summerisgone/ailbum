@@ -87,6 +87,38 @@ def api(monkeypatch):
     return SimpleNamespace(detectors=calls)
 
 
+def seed_photo(c, root, photo):
+    """Rows the real load_pool reads, so SUPERLITE_REAL runs see `photo` in the album pool."""
+    i = photo.image_id
+    height = 1200 if photo.regions else 1000
+    width = round(photo.aspect * height)
+    source = root / f"p{i}.jpg"
+    source.write_bytes(b"jpg")
+    c.execute(
+        "INSERT INTO images (id, path, source_root, relative_path, file_name, extension,"
+        " file_size_bytes, modified_at, sha256, width, height, exif_json,"
+        " container_metadata_json, indexed_at)"
+        " VALUES (?, ?, 's', ?, ?, 'jpg', 1, 't', 'x', ?, ?, '{}', '{}', 't')",
+        (i, str(source), f"p{i}", f"p{i}", width, height),
+    )
+    shared = sum(p.unit_key == photo.unit_key for p in POOL) > 1
+    cluster = int(photo.unit_key.split(":")[1]) if shared else None
+    c.execute(
+        "INSERT INTO photo_analysis (run_id, image_id, photo_id, sharpness, exposure, quality,"
+        " is_blurry, similar_cluster, story_id, selected) VALUES ('r', ?, ?, 1, 1, ?, 0, ?, ?, ?)",
+        (i, f"p{i}", photo.rank, cluster, photo.story_id, int(photo.selected)),
+    )
+    if photo.selected:
+        c.execute("INSERT INTO album_photos VALUES (1, ?, ?, 't')", (i, i))
+    if photo.regions:
+        # build_regions pads this box to FACE: x -0.2w..+1.2w, y -0.35h..+1.15h.
+        c.execute(
+            "INSERT INTO faces (run_id, image_id, face_id, face_index, bbox_x, bbox_y,"
+            " bbox_width, bbox_height, confidence) VALUES ('r', ?, ?, 0, 0, 444, 100, 240, 1)",
+            (i, f"f{i}"),
+        )
+
+
 @pytest.fixture
 def db(tmp_path):
     path = tmp_path / "a.db"
@@ -96,13 +128,8 @@ def db(tmp_path):
         c.execute(
             "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
             " VALUES (1, 'u1', 'А', 'r', 't', 't')")
-        for i in range(1, 6):
-            c.execute(
-                "INSERT INTO images (id, path, source_root, relative_path, file_name, extension,"
-                " file_size_bytes, modified_at, sha256, exif_json, container_metadata_json,"
-                " indexed_at) VALUES (?, ?, 's', ?, ?, 'jpg', 1, 't', 'x', '{}', '{}', 't')",
-                (i, f"/p{i}.jpg", f"p{i}", f"p{i}"),
-            )
+        for photo in POOL:
+            seed_photo(c, tmp_path, photo)
         c.execute("INSERT INTO layouts (id, album_id, run_id, orientation, spread_count, min_photos,"
                   " max_photos, selection_hash, created_at, updated_at)"
                   " VALUES (1,1,'r','vertical',1,3,3,'h','t','t')")
@@ -235,6 +262,10 @@ def test_alternatives_sorted_by_fit_and_capped_24(db, api, monkeypatch):
             for i in range(30)]
     if os.environ.get("SUPERLITE_REAL") != "1":
         monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: POOL + many)
+    else:
+        with database.connect(db) as c:
+            for photo in many:
+                seed_photo(c, db.parent, photo)
     result = editing.alternatives(db, 5, 0)
     assert len(result) == 24
     fits = [a["fit"] for a in result]
@@ -287,8 +318,9 @@ def test_recompose_keeps_same_photos(db, api):
     layout = editing.recompose_spread(db, 5)
     spread = layout["spreads"][0]
     assert sorted(images(layout)) == [1, 2, 3]
-    assert spread["template_id"] == "page_2h"
-    assert spread["warnings"] == ["draft"]
+    if os.environ.get("SUPERLITE_REAL") != "1":
+        assert spread["template_id"] == "page_2h"
+        assert spread["warnings"] == ["draft"]
 
 
 def test_edits_keep_detector_scan(db, api):
@@ -334,8 +366,15 @@ def test_similar_lists_placed_photo_and_siblings(db, api):
 
 def test_variants_other_templates_and_counts(db, api, story_pool):
     found = editing.variants(db, 5)
-    assert [v["image_ids"] for v in found] == [[1, 2, 3, 5], [1, 2]]
-    assert found[0]["template_id"] == "grid_2x2"
+    if os.environ.get("SUPERLITE_REAL") == "1":
+        sets = [v["image_ids"] for v in found]
+        assert [s for i, s in enumerate(sets) if i == 0 or sets[i - 1] != s] == [
+            [1, 2, 3], [1, 2, 3, 5], [1, 2]]
+        assert all(v["template_id"] != "page_2h" for v in found if v["image_ids"] == [1, 2, 3])
+        found = [v for v in found if v["image_ids"] == [1, 2, 3, 5]]
+    else:
+        assert [v["image_ids"] for v in found] == [[1, 2, 3, 5], [1, 2]]
+        assert found[0]["template_id"] == "grid_2x2"
     cell0 = found[0]["cells"][0]
     assert set(cell0) == {"index", "x", "y", "w", "h", "image_id", "crop"}
     assert 0 <= cell0["x"] <= 1 and 0 < cell0["w"] <= 1
@@ -393,3 +432,20 @@ def test_mutations_on_ordered_album_raise_reads_allowed(db, api):
     editing.alternatives(db, 5, 0)
     editing.similar(db, 5, 0)
     editing.variants(db, 5)
+
+
+def test_fixture_seeds_real_pool_like_fake(db):
+    # SUPERLITE_REAL runs use the real load_pool, so the db fixture must hold the same pool.
+    from ailbum.layout.facts import load_pool
+
+    with database.connect(db) as c:
+        real = {p.image_id: p for p in load_pool(c, 1, None)}
+    assert sorted(real) == [p.image_id for p in POOL]
+    assert real[1].unit_key == real[4].unit_key != real[5].unit_key
+    for photo in POOL:
+        got = real[photo.image_id]
+        assert got.aspect == pytest.approx(photo.aspect)
+        assert got.selected is photo.selected
+        boxes = [(r.bbox.x, r.bbox.y, r.bbox.w, r.bbox.h, r.kind) for r in got.regions]
+        assert boxes == [pytest.approx((r.bbox.x, r.bbox.y, r.bbox.w, r.bbox.h, r.kind))
+                         for r in photo.regions]
