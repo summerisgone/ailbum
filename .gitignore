@@ -13,3 +13,4 @@ output/
 models/*.onnx
 desktop/models/*.onnx
 data/
+swift/Models/
