@@ -65,7 +65,7 @@ public enum YuNet {
 
     public static func detect(_ image: RGBImage, minFaceSize: Int) throws -> [FaceDetection] {
         let n = inputSize
-        let scale = Float(n) / Float(max(image.width, image.height))
+        let scale = min(1, Float(n) / Float(max(image.width, image.height)))
         let nw = max(1, min(n, Int((Float(image.width) * scale).rounded())))
         let nh = max(1, min(n, Int((Float(image.height) * scale).rounded())))
         // Bilinear resize (half-pixel centres) into the top-left of a zero canvas.
