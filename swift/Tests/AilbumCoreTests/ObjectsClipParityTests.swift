@@ -7,6 +7,7 @@ private struct GTag: Decodable { var label: String; var confidence: Double }
 private struct GSemantic: Decodable {
     var aesthetic_score: Double
     var scenes: [GTag]
+    var objects: [GTag]
     var embedding: [Float]
 }
 private struct Golden: Decodable { var objects: [GObject]; var semantic: GSemantic }
@@ -56,9 +57,11 @@ private func cosine(_ a: [Float], _ b: [Float]) -> Double {
         let cos = cosine(e, g.embedding)
         let diff = abs((r.aestheticScore ?? -1) - g.aesthetic_score)
         print("PARITY clip cosine", cos, "aesthetic", r.aestheticScore as Any, g.aesthetic_score, "scenes", r.scenes, g.scenes)
-        #expect(cos >= 0.995)
-        #expect(diff <= 0.02)
-        #expect(r.scenes.first?.label == g.scenes.first?.label)
+        #expect(cos >= 0.9999)
+        #expect(diff <= 0.001)
+        #expect(r.scenes.map(\.label) == g.scenes.map(\.label))
+        #expect(r.objects.map(\.label) == g.objects.map(\.label))
+        for (a, b) in zip(r.scenes + r.objects, g.scenes + g.objects) { #expect(abs(a.confidence - b.confidence) <= 0.001) }
     }
 
     @Test(.enabled(if: ModelStore.available("clip_vision") && ModelStore.available("yolox")))
