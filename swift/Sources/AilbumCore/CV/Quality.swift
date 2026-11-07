@@ -10,6 +10,7 @@ public enum Quality {
     public static func sharpness(_ image: RGBImage, maxSide: Int) throws -> Double {
         let img = fitted(image, maxSide)
         let w = img.width, h = img.height
+        guard w > 0, h > 0 else { return 0 }
         let n = w * h
         var gray = [Float](repeating: 0, count: n)
         for i in 0..<n {
@@ -72,6 +73,7 @@ public enum Quality {
     public static func exposure(_ image: RGBImage, maxSide: Int) -> Double {
         let img = fitted(image, maxSide)
         let n = img.width * img.height
+        guard n > 0 else { return 0 }
         let cr = 871, cg = 2929, cb = 296 // round(c * 4096) for R, G, B
         let lScale = 296
         let lShift = -((16 * 255 * 32768 + 50) / 100)

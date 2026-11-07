@@ -48,3 +48,33 @@ private func solid(_ w: Int, _ h: Int, _ v: UInt8) -> RGBImage {
 @Test func testMetalAvailable() throws {
     _ = try MetalContext.shared.pipeline("laplacian")
 }
+
+private func noisy(_ w: Int, _ h: Int) -> RGBImage {
+    var v: UInt64 = 7
+    var px = [UInt8]()
+    for _ in 0..<(w * h * 3) {
+        v = (v * 1103515245 + 12345) & 0x7fffffff
+        px.append(UInt8((v >> 16) & 255))
+    }
+    return RGBImage(width: w, height: h, pixels: px)
+}
+
+@Test func testTinyImageBordersParity() throws {
+    let cases: [(Int, Int, Double, Double)] = [
+        (5, 2, 53.360000000000014, 0.9788235306739808),
+        (2, 5, 50.64, 0.9788235306739808),
+        (1, 6, 978.1388888888888, 0.9545098066329956),
+        (6, 1, 978.1388888888888, 0.9545098066329956),
+    ]
+    for (w, h, sharp, expo) in cases {
+        let s = try Quality.sharpness(noisy(w, h), maxSide: 1600)
+        #expect(abs(s - sharp) / sharp < 1e-3, "sharpness \(w)x\(h) got \(s)")
+        #expect(abs(Quality.exposure(noisy(w, h), maxSide: 800) - expo) < 1e-4, "exposure \(w)x\(h)")
+    }
+}
+
+@Test func testEmptyImageDoesNotTrap() throws {
+    let empty = RGBImage(width: 0, height: 0, pixels: [])
+    #expect(try Quality.sharpness(empty, maxSide: 100) == 0)
+    #expect(Quality.exposure(empty, maxSide: 100) == 0)
+}

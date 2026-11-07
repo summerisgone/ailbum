@@ -96,3 +96,14 @@ private let goldenHistogram: [Float] = [
     #expect(HashColor.hamming([true, false, true], [true, true, false]) == 2)
     #expect(abs(HashColor.similarity([0.6, 0.8], [0.6, 0.8]) - 1) < 1e-6)
 }
+
+@Test func testPhashNoisyParity() {
+    var v: UInt64 = 1
+    var px = [UInt8]()
+    for _ in 0..<(32 * 32 * 3) {
+        v = (v * 1103515245 + 12345) & 0x7fffffff
+        px.append(UInt8((v >> 16) & 255))
+    }
+    let bits = HashColor.features(RGBImage(width: 32, height: 32, pixels: px)).phash.map { $0 ? "1" : "0" }.joined()
+    #expect(bits == "1011110100110101001010100000110010111010001001011110011101100100")
+}

@@ -11,7 +11,9 @@ public enum Vectors {
         return data
     }
 
+    /// Returns [] for a blob shorter than dimension*4 bytes (corrupt row) instead of trapping.
     public static func decode(_ d: Data, dimension: Int) -> [Float] {
+        guard dimension > 0, d.count >= dimension * 4 else { return [] }
         let embedding: [Float] = d.withUnsafeBytes { raw in
             (0..<dimension).map { index in
                 Float(bitPattern: raw.loadUnaligned(fromByteOffset: index * 4, as: UInt32.self).littleEndian)

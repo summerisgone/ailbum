@@ -82,3 +82,20 @@ private func tmpPath(_ name: String = "a.sqlite3") -> String {
     let db2 = try Database.open(path: path)
     #expect(try db2.query("SELECT COUNT(*) AS n FROM people", []) == [["n": .integer(1)]])
 }
+
+@Test func testNestedTransactionInnerRollback() throws {
+    let db = try Database.open(path: tmpPath())
+    try db.execute("CREATE TABLE t(x INTEGER)", [])
+    struct Boom: Error {}
+    try db.transaction {
+        try db.execute("INSERT INTO t VALUES (1)", [])
+        try? db.transaction {
+            try db.execute("INSERT INTO t VALUES (2)", [])
+            throw Boom()
+        }
+        try db.transaction { try db.execute("INSERT INTO t VALUES (3)", []) }
+    }
+    #expect(try db.query("SELECT x FROM t ORDER BY x", []) == [["x": .integer(1)], ["x": .integer(3)]])
+    try db.transaction { try db.execute("INSERT INTO t VALUES (4)", []) }
+    #expect(try db.query("SELECT COUNT(*) AS n FROM t", []) == [["n": .integer(3)]])
+}

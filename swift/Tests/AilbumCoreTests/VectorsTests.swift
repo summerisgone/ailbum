@@ -42,3 +42,9 @@ import Testing
     unionFind.union(3, 4)
     #expect(unionFind.components() == [[0, 2], [1], [3, 4]])
 }
+
+@Test func testDecodeShortBlobDoesNotTrap() {
+    #expect(Vectors.decode(Data([1, 2, 3]), dimension: 2) == [])
+    #expect(Vectors.decode(Data(), dimension: 4) == [])
+    #expect(Vectors.decode(Data([0, 0, 128, 63]), dimension: 0) == [])
+}

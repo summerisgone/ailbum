@@ -5,8 +5,3 @@ public enum AilbumError: Error, Equatable {
     case metal(String)
 }
 
-public struct NotImplemented: Error, CustomStringConvertible {
-    public let task: String
-    public init(task: String) { self.task = task }
-    public var description: String { "not implemented: \(task)" }
-}

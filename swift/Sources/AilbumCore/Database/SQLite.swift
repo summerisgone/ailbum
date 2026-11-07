@@ -87,14 +87,24 @@ public final class Database {
         return Int(v)
     }
 
+    private var depth = 0
+    private let txLock = NSRecursiveLock()
+
+    /// Serialises transactions across threads; nested calls use savepoints.
     public func transaction(_ body: () throws -> Void) throws {
-        try executeScript("BEGIN")
+        txLock.lock()
+        defer { txLock.unlock() }
+        let name = "sl_sp\(depth)"
+        let nested = depth > 0
+        try executeScript(nested ? "SAVEPOINT \(name)" : "BEGIN")
+        depth += 1
+        defer { depth -= 1 }
         do {
             try body()
+            try executeScript(nested ? "RELEASE \(name)" : "COMMIT")
         } catch {
-            try? executeScript("ROLLBACK")
+            try? executeScript(nested ? "ROLLBACK TO \(name); RELEASE \(name)" : "ROLLBACK")
             throw error
         }
-        try executeScript("COMMIT")
     }
 }
