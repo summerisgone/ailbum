@@ -12,6 +12,8 @@ import {
   Images,
   Layers3,
   LoaderCircle,
+  Merge,
+  Pencil,
   Plus,
   Search,
   Settings2,
@@ -609,6 +611,8 @@ function PeopleEditor({ database, onError }: { database: string; onError(message
   const [loadingFaces, setLoadingFaces] = useState(false);
   const [pendingFaces, setPendingFaces] = useState<Set<number>>(() => new Set());
   const [savingName, setSavingName] = useState(false);
+  const [mergeTarget, setMergeTarget] = useState<PersonSummary | null>(null);
+  const [merging, setMerging] = useState(false);
 
   const refreshPeople = useCallback(async () => {
     const next = await window.ailbum.getPeople();
@@ -641,20 +645,31 @@ function PeopleEditor({ database, onError }: { database: string; onError(message
   }, []);
 
   useEffect(() => {
+    setMergeTarget(null);
     if (activePersonId === undefined) return;
     setCollection(null);
     loadFaces(activePersonId).catch((reason) => onError(String(reason)));
   }, [activePersonId, loadFaces, onError]);
 
-  const saveName = useCallback(async () => {
-    if (activePersonId == null || savingName) return;
+  const activePerson = collection?.person?.id === activePersonId ? collection?.person ?? null : null;
+  const mergeCandidates = (peopleLibrary?.people ?? []).filter(
+    (person) => activePerson && person.id !== activePerson.id && person.embedding_model === activePerson.embedding_model,
+  );
+  const normalizedDraft = nameDraft.trim().toLocaleLowerCase("ru");
+  const draftMatchesTarget = mergeTarget?.name?.toLocaleLowerCase("ru") === normalizedDraft;
+
+  const commitName = useCallback(async () => {
+    if (!activePerson || savingName) return;
+    const name = nameDraft.trim();
+    const personId = activePerson.id;
     setSavingName(true);
     try {
-      await window.ailbum.setPersonName(activePersonId, nameDraft);
+      await window.ailbum.setPersonName(personId, name);
       await refreshPeople();
+      setMergeTarget(null);
       setCollection((current) =>
-        current?.person?.id === activePersonId
-          ? { ...current, person: { ...current.person, name: nameDraft.trim() || null } }
+        current?.person?.id === personId
+          ? { ...current, person: { ...current.person, name: name || null } }
           : current,
       );
     } catch (reason) {
@@ -662,7 +677,43 @@ function PeopleEditor({ database, onError }: { database: string; onError(message
     } finally {
       setSavingName(false);
     }
-  }, [activePersonId, nameDraft, onError, refreshPeople, savingName]);
+  }, [activePerson, nameDraft, onError, refreshPeople, savingName]);
+
+  const saveName = useCallback(async () => {
+    if (!activePerson || nameDraft.trim() === (activePerson.name ?? "")) return;
+    // The typed name already belongs to someone: this is most likely the same person.
+    const sameName = normalizedDraft
+      ? mergeCandidates.find((person) => person.name?.toLocaleLowerCase("ru") === normalizedDraft)
+      : undefined;
+    if (sameName) {
+      setMergeTarget(sameName);
+      return;
+    }
+    await commitName();
+  }, [activePerson, commitName, mergeCandidates, nameDraft, normalizedDraft]);
+
+  const dismissMerge = useCallback(() => {
+    if (draftMatchesTarget) {
+      void commitName();
+      return;
+    }
+    setNameDraft(activePerson?.name ?? "");
+    setMergeTarget(null);
+  }, [activePerson, commitName, draftMatchesTarget]);
+
+  const mergeActivePerson = useCallback(async () => {
+    if (!activePerson || !mergeTarget || merging) return;
+    setMerging(true);
+    try {
+      await window.ailbum.mergePerson(activePerson.id, mergeTarget.id);
+      await refreshPeople();
+      setActivePersonId(mergeTarget.id);
+    } catch (reason) {
+      onError(String(reason));
+    } finally {
+      setMerging(false);
+    }
+  }, [activePerson, mergeTarget, merging, onError, refreshPeople]);
 
   const assignFace = useCallback(
     async (face: Face, destination: string) => {
@@ -742,21 +793,68 @@ function PeopleEditor({ database, onError }: { database: string; onError(message
               >
                 <input
                   value={nameDraft}
-                  onChange={(event) => setNameDraft(event.target.value)}
+                  onChange={(event) => {
+                    setNameDraft(event.target.value);
+                    setMergeTarget(null);
+                  }}
                   onBlur={() => void saveName()}
                   placeholder={`Человек ${activePersonId}`}
+                  title="Имя применяется ко всем фото этого человека"
                   aria-label="Имя человека"
                 />
-                {savingName && <LoaderCircle className="spin" size={16} />}
+                {savingName ? <LoaderCircle className="spin" size={16} /> : <Pencil size={14} />}
               </form>
             )}
           </div>
-          <div className="face-summary">
-            <strong>{collection?.faces.length ?? 0}</strong>
-            <span>наблюдений лица</span>
-            {collection?.person && <small>{collection.person.embedding_model}</small>}
+          <div className="faces-header-actions">
+            {mergeCandidates.length > 0 && (
+              <label className="face-assignment person-merge">
+                <Merge size={14} />
+                <select
+                  value=""
+                  disabled={merging}
+                  onChange={(event) =>
+                    setMergeTarget(
+                      mergeCandidates.find((person) => person.id === Number(event.target.value)) ?? null,
+                    )
+                  }
+                  aria-label="Объединить с другим человеком"
+                >
+                  <option value="" disabled>Это тот же человек, что…</option>
+                  {mergeCandidates.map((person) => (
+                    <option value={person.id} key={person.id}>
+                      {person.name || `Человек ${person.id}`} · {person.photo_count} фото
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="face-summary">
+              <strong>{collection?.faces.length ?? 0}</strong>
+              <span>наблюдений лица</span>
+              {collection?.person && <small>{collection.person.embedding_model}</small>}
+            </div>
           </div>
         </header>
+
+        {activePerson && mergeTarget && (
+          <div className="merge-confirm" role="alertdialog" aria-label="Объединение людей">
+            <p>
+              <strong>{activePerson.name || `Человек ${activePerson.id}`}</strong>
+              {" и "}
+              <strong>{mergeTarget.name || `Человек ${mergeTarget.id}`}</strong>
+              {" - один человек? "}
+              Все лица перейдут к одной записи для всех фото. Отменить объединение можно только вручную.
+            </p>
+            <button className="merge-confirm-primary" disabled={merging} onClick={() => void mergeActivePerson()}>
+              {merging ? <LoaderCircle className="spin" size={13} /> : <Merge size={13} />}
+              Объединить
+            </button>
+            <button disabled={merging || savingName} onClick={dismissMerge}>
+              {draftMatchesTarget ? "Это другой человек" : "Отмена"}
+            </button>
+          </div>
+        )}
 
         {loadingFaces || !collection ? (
           <div className="loading-screen"><LoaderCircle className="spin" size={22} />Загружаем лица…</div>

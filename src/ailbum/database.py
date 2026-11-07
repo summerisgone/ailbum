@@ -840,17 +840,28 @@ def merge_people(database: Path, target_id: int, source_ids: list[int]) -> dict[
     if not sources:
         raise ValueError("At least one different source person is required")
     with connect(database) as connection:
-        target = connection.execute("SELECT id FROM people WHERE id = ?", (target_id,)).fetchone()
+        target = connection.execute(
+            "SELECT id, name, embedding_model FROM people WHERE id = ?", (target_id,)
+        ).fetchone()
         if target is None:
             raise ValueError(f"Person id does not exist: {target_id}")
         placeholders = ", ".join("?" for _ in sources)
         rows = connection.execute(
-            f"SELECT id FROM people WHERE id IN ({placeholders})", sources
+            f"SELECT id, name, embedding_model FROM people WHERE id IN ({placeholders}) ORDER BY id",
+            sources,
         ).fetchall()
         found = {int(row["id"]) for row in rows}
         missing = sorted(set(sources) - found)
         if missing:
             raise ValueError(f"Person ids do not exist: {missing}")
+        if any(row["embedding_model"] != target["embedding_model"] for row in rows):
+            raise ValueError("Нельзя объединить людей из разных моделей признаков")
+        inherited_name = next((row["name"] for row in rows if row["name"]), None)
+        if not target["name"] and inherited_name:
+            connection.execute(
+                "UPDATE people SET name = ?, updated_at = ? WHERE id = ?",
+                (inherited_name, utc_now(), target_id),
+            )
         connection.execute(
             f"UPDATE faces SET person_id = ? WHERE person_id IN ({placeholders})",
             [target_id, *sources],

@@ -156,6 +156,7 @@ declare global {
       getPeople(): Promise<PeopleLibrary>;
       getFaces(personId: number | null): Promise<FaceCollection>;
       setPersonName(personId: number, name: string): Promise<unknown>;
+      mergePerson(sourceId: number, targetId: number): Promise<unknown>;
       assignFace(faceId: number, personId: number | null): Promise<unknown>;
       createPersonFromFace(faceId: number, name: string): Promise<{ id: number }>;
       chooseDatabase(): Promise<Library | null>;

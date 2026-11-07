@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from ailbum.database import (
+    connect,
     create_person_from_face,
     get_desktop_faces,
     get_desktop_people,
@@ -15,6 +17,7 @@ from ailbum.database import (
     save_analysis,
     set_face_person,
 )
+from ailbum.desktop_bridge import _dispatch
 from ailbum.metadata import collect_image_metadata
 from ailbum.models import (
     ExpressionRecord,
@@ -142,6 +145,63 @@ def test_people_can_be_merged(tmp_path: Path) -> None:
     assert len(list_people(database)) == 1
     assert merged["face_count"] == 2
     assert get_person(database, target.person_id or 0)["id"] == target.person_id
+
+
+def _two_people(tmp_path: Path) -> tuple[Path, int, int]:
+    source = tmp_path / "photos"
+    source.mkdir()
+    image_path = source / "portrait.jpg"
+    Image.new("RGB", (240, 180), (80, 120, 160)).save(image_path)
+    database = tmp_path / "catalog.sqlite3"
+    first = _save_run(database, source, image_path, "run-1", [1.0, 0.0], (10, 10, 60, 60))
+    second = _save_run(database, source, image_path, "run-2", [0.0, 1.0], (120, 30, 60, 60))
+    return database, first.person_id or 0, second.person_id or 0
+
+
+def test_merge_keeps_target_name(tmp_path: Path) -> None:
+    database, target_id, source_id = _two_people(tmp_path)
+    name_person(database, target_id, "Ирина")
+    name_person(database, source_id, "Ира")
+
+    merged = merge_people(database, target_id, [source_id])
+
+    assert merged["name"] == "Ирина"
+
+
+def test_merge_into_unnamed_target_inherits_source_name(tmp_path: Path) -> None:
+    database, target_id, source_id = _two_people(tmp_path)
+    name_person(database, source_id, "Ирина")
+
+    merged = merge_people(database, target_id, [source_id])
+
+    assert merged["name"] == "Ирина"
+    assert merged["face_count"] == 2
+
+
+def test_merge_rejects_people_from_different_models(tmp_path: Path) -> None:
+    database, target_id, source_id = _two_people(tmp_path)
+    with connect(database) as connection:
+        connection.execute(
+            "UPDATE people SET embedding_model = 'other-model' WHERE id = ?", (source_id,)
+        )
+
+    with pytest.raises(ValueError, match="разных моделей"):
+        merge_people(database, target_id, [source_id])
+
+    assert len(list_people(database)) == 2
+
+
+def test_desktop_bridge_merges_person_into_target(tmp_path: Path) -> None:
+    database, target_id, source_id = _two_people(tmp_path)
+    name_person(database, target_id, "Ирина")
+
+    merged = _dispatch(
+        database, "person.merge", {"source_id": source_id, "target_id": target_id}
+    )
+
+    assert merged["id"] == target_id
+    assert merged["face_count"] == 2
+    assert [person["id"] for person in list_people(database)] == [target_id]
 
 
 def test_desktop_editor_can_reassign_and_create_people(tmp_path: Path) -> None:

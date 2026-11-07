@@ -416,6 +416,12 @@ app.whenReady().then(() => {
   ipcMain.handle("person:name", (_event, { personId, name }) =>
     bridge.request("person.name", { person_id: Number(personId), name: String(name || "") }),
   );
+  ipcMain.handle("person:merge", (_event, { sourceId, targetId }) =>
+    bridge.request("person.merge", {
+      source_id: Number(sourceId),
+      target_id: Number(targetId),
+    }),
+  );
   ipcMain.handle("face:assign", (_event, { faceId, personId }) =>
     bridge.request("face.assign", {
       face_id: Number(faceId),

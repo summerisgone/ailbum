@@ -18,6 +18,7 @@ from ailbum.database import (
     get_desktop_faces,
     get_desktop_library,
     get_desktop_people,
+    merge_people,
     name_person,
     set_desktop_favorite,
     set_desktop_target,
@@ -85,6 +86,8 @@ def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
         return get_desktop_faces(database, int(value) if value is not None else None)
     if action == "person.name":
         return name_person(database, int(payload["person_id"]), payload.get("name"))
+    if action == "person.merge":
+        return merge_people(database, int(payload["target_id"]), [int(payload["source_id"])])
     if action == "face.assign":
         value = payload.get("person_id")
         return set_face_person(

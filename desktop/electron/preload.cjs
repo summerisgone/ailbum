@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("ailbum", {
   getFaces: (personId) => ipcRenderer.invoke("person:faces", { personId }),
   setPersonName: (personId, name) =>
     ipcRenderer.invoke("person:name", { personId, name }),
+  mergePerson: (sourceId, targetId) =>
+    ipcRenderer.invoke("person:merge", { sourceId, targetId }),
   assignFace: (faceId, personId) =>
     ipcRenderer.invoke("face:assign", { faceId, personId }),
   createPersonFromFace: (faceId, name) =>
