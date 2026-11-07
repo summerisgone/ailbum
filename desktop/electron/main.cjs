@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const { existsSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
@@ -521,8 +521,43 @@ app.whenReady().then(() => {
       crop,
     }),
   );
-  ipcMain.handle("layout:recompose-spread", (_event, { spreadId }) =>
-    bridge.request("layout.recompose_spread", { spread_id: Number(spreadId) }),
+  ipcMain.handle("layout:recompose-spread", (_event, { spreadId, prompt }) =>
+    bridge.request("layout.recompose_spread", {
+      spread_id: Number(spreadId),
+      prompt: String(prompt || ""),
+    }),
+  );
+  ipcMain.handle("layout:similar", (_event, { spreadId, cellIndex }) =>
+    bridge.request("layout.similar", {
+      spread_id: Number(spreadId),
+      cell_index: Number(cellIndex),
+    }),
+  );
+  ipcMain.handle("layout:variants", (_event, { spreadId }) =>
+    bridge.request("layout.variants", { spread_id: Number(spreadId) }),
+  );
+  ipcMain.handle("layout:apply-variant", (_event, { spreadId, templateId, imageIds }) =>
+    bridge.request("layout.apply_variant", {
+      spread_id: Number(spreadId),
+      template_id: String(templateId),
+      image_ids: Array.isArray(imageIds) ? imageIds.map(Number) : [],
+    }),
+  );
+  ipcMain.handle("layout:export", async (_event, { runId }) => {
+    const result = await dialog.showOpenDialog({
+      title: "Куда сохранить оригиналы фото из альбома",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const exported = await bridge.request("layout.export", {
+      run_id: String(runId),
+      folder: path.resolve(result.filePaths[0]),
+    });
+    shell.openPath(exported.folder);
+    return exported;
+  });
+  ipcMain.handle("layout:parse-prompt", (_event, { prompt }) =>
+    bridge.request("layout.parse_prompt", { prompt: String(prompt || "") }),
   );
   ipcMain.handle("database:job-status", () => jobState);
   ipcMain.handle("database:job-cancel", () => {

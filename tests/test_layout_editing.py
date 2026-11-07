@@ -25,6 +25,7 @@ class Photo:
     regions: tuple = ()
     rank: float = 0.5
     story_id: int | None = None
+    taken_at: str | None = None
 
 
 POOL = [
@@ -67,7 +68,8 @@ def fake_best_variants(photos, params, limit=3):
         placements.append(SimpleNamespace(
             cell_index=cell.index, image_id=photo.image_id, crop=crop.rect, fit=crop.fit,
             warnings=crop.violations, replaced_image_id=None))
-    draft = SimpleNamespace(template_id=template.id, placements=placements, warnings=["draft"])
+    draft = SimpleNamespace(
+        template_id=template.id, placements=placements, warnings=["draft"], score=0.0)
     return [draft]
 
 
@@ -234,7 +236,8 @@ def test_alternatives_sorted_by_fit_and_capped_24(db, api, monkeypatch):
     assert len(result) == 24
     fits = [a["fit"] for a in result]
     assert fits == sorted(fits, reverse=True)
-    assert set(result[0]) == {"image_id", "fit", "warnings", "in_selection"}
+    assert set(result[0]) == {
+        "image_id", "fit", "warnings", "in_selection", "placed", "similar"}
     by_id = {a["image_id"]: a for a in result}
     if 100 in by_id:
         assert by_id[100]["in_selection"] is True
@@ -291,3 +294,80 @@ def test_edits_keep_detector_scan(db, api):
     editing.recompose_spread(db, 5)
     if api.detectors:
         assert all(d is None for d in api.detectors)
+
+
+STORY_POOL = [
+    Photo(1, 1.5, "image:1", story_id=1),
+    Photo(2, 0.7, "image:2", story_id=1),
+    Photo(3, 1.0, "image:3", regions=(FACE,), story_id=1),
+    Photo(4, 1.4, "image:1", selected=False, story_id=1),
+    Photo(5, 1.2, "image:5", story_id=1),
+]
+
+
+@pytest.fixture
+def story_pool(monkeypatch):
+    monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: list(STORY_POOL))
+
+
+def unplaced(db):
+    with database.connect(db) as c:
+        return json.loads(c.execute("SELECT unplaced_json FROM layouts").fetchone()[0])
+
+
+def test_alternatives_mark_placed_and_similar(db, api):
+    by_id = {a["image_id"]: a for a in editing.alternatives(db, 5, 0)}
+    assert by_id[2]["placed"] == {"spread_id": 5, "position": 1, "cell_index": 1}
+    assert by_id[5]["placed"] is None
+    assert by_id[4]["similar"] is True and by_id[5]["similar"] is False
+
+
+def test_similar_lists_placed_photo_and_siblings(db, api):
+    result = editing.similar(db, 5, 0)
+    assert [a["image_id"] for a in result] == [1, 4]
+    assert result[0]["placed"]["cell_index"] == 0
+    assert result[1]["in_selection"] is False
+
+
+def test_variants_other_templates_and_counts(db, api, story_pool):
+    found = editing.variants(db, 5)
+    assert [v["image_ids"] for v in found] == [[1, 2, 3, 5], [1, 2]]
+    assert found[0]["template_id"] == "grid_2x2"
+    cell0 = found[0]["cells"][0]
+    assert set(cell0) == {"index", "x", "y", "w", "h", "image_id", "crop"}
+    assert 0 <= cell0["x"] <= 1 and 0 < cell0["w"] <= 1
+
+
+def test_apply_variant_changes_count_and_tracks_unplaced(db, api, story_pool):
+    layout = editing.apply_variant(db, 5, "grid_2x2", [1, 2, 3, 5])
+    assert sorted(images(layout)) == [1, 2, 3, 5]
+    layout = editing.apply_variant(db, 5, "pages", [1, 2])
+    assert sorted(images(layout)) == [1, 2]
+    assert unplaced(db) == [
+        {"image_id": 3, "reason": "removed"}, {"image_id": 5, "reason": "removed"}]
+    editing.apply_variant(db, 5, "page_2h", [1, 2, 3])
+    assert unplaced(db) == [{"image_id": 5, "reason": "removed"}]
+    with pytest.raises(ValueError):
+        editing.apply_variant(db, 5, "grid_2x2", [1, 2])
+    with pytest.raises(ValueError):
+        editing.apply_variant(db, 5, "full", [404])
+
+
+def test_apply_variant_rejects_photo_on_other_spread(db, api, story_pool):
+    with database.connect(db) as c:
+        c.execute("INSERT INTO layout_spreads VALUES (6, 1, 2, 'full', '[1]', '[]', NULL)")
+        c.execute("INSERT INTO layout_placements VALUES (6, 0, 5, 0, 0, 1, 1, 0.5, '[]', NULL)")
+    with pytest.raises(ValueError):
+        editing.apply_variant(db, 5, "grid_2x2", [1, 2, 3, 5])
+
+
+def test_recompose_with_wish_repicks_photos(db, api, monkeypatch):
+    face_pool = [*STORY_POOL[:4], Photo(5, 1.2, "image:5", regions=(FACE,), story_id=1)]
+    monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: face_pool)
+    layout = editing.recompose_spread(db, 5, "больше лиц")
+    assert sorted(images(layout)) == [1, 3, 5]
+    assert unplaced(db) == [{"image_id": 2, "reason": "removed"}]
+    layout = editing.recompose_spread(db, 5, "пейзажи, без людей")
+    assert sorted(images(layout)) == [1, 2, 3]
+    with pytest.raises(ValueError):
+        editing.recompose_spread(db, 5, "что-нибудь красивое")

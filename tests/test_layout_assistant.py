@@ -167,6 +167,9 @@ def test_request_carries_image_and_title(monkeypatch, tmp_path):
     parts = payload["messages"][0]["content"]
     assert "Ужин" in parts[0]["text"]
     assert parts[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert "Пожелание" not in parts[0]["text"]
+    a.choose(variants, paths, "vertical", "Ужин", "больше лиц")
+    assert "Пожелание автора альбома: «больше лиц»" in calls[1][1]["messages"][0]["content"][0]["text"]
 
 
 def test_connect_false_when_server_down(monkeypatch):

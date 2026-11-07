@@ -46,8 +46,15 @@ contextBridge.exposeInMainWorld("ailbum", {
     ipcRenderer.invoke("layout:set-template", { spreadId, templateId }),
   setLayoutCrop: (spreadId, cellIndex, crop) =>
     ipcRenderer.invoke("layout:set-crop", { spreadId, cellIndex, crop }),
-  recomposeLayoutSpread: (spreadId) =>
-    ipcRenderer.invoke("layout:recompose-spread", { spreadId }),
+  recomposeLayoutSpread: (spreadId, prompt) =>
+    ipcRenderer.invoke("layout:recompose-spread", { spreadId, prompt }),
+  getLayoutSimilar: (spreadId, cellIndex) =>
+    ipcRenderer.invoke("layout:similar", { spreadId, cellIndex }),
+  getLayoutVariants: (spreadId) => ipcRenderer.invoke("layout:variants", { spreadId }),
+  applyLayoutVariant: (spreadId, templateId, imageIds) =>
+    ipcRenderer.invoke("layout:apply-variant", { spreadId, templateId, imageIds }),
+  exportLayout: (runId) => ipcRenderer.invoke("layout:export", { runId }),
+  parseLayoutPrompt: (prompt) => ipcRenderer.invoke("layout:parse-prompt", { prompt }),
   mediaUrl: (imageId) => `ailbum-media://photo/${imageId}`,
   originalUrl: (imageId) => `ailbum-media://original/${imageId}`,
   faceUrl: (faceId) => `ailbum-media://face/${faceId}`,

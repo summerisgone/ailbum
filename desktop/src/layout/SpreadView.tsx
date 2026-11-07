@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Maximize2 } from "lucide-react";
 import type { Layout } from "../types";
 
 export type Spread = Layout["spreads"][number];
@@ -13,6 +14,8 @@ export const WARNING_LABELS: Record<string, string> = {
 };
 
 const SPINE_GUARD_MM = 8;
+export const MAX_ZOOM = 4;
+const ZOOM_SAVE_MS = 400;
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
@@ -27,6 +30,21 @@ export function normalizeCrop(crop: Crop): Crop {
 export function dragCrop(start: Crop, dx: number, dy: number): Crop {
   const c = normalizeCrop(start);
   return normalizeCrop({ ...c, x: c.x - dx * c.w, y: c.y - dy * c.h });
+}
+
+// 1 is the largest window of the cell's shape that fits the photo.
+export function zoomOf(crop: Crop): number {
+  const c = normalizeCrop(crop);
+  return 1 / Math.max(c.w, c.h);
+}
+
+// Scales the window by `factor` keeping its shape; (px, py) is the cell point that stays put.
+export function zoomCrop(start: Crop, factor: number, px = 0.5, py = 0.5): Crop {
+  const c = normalizeCrop(start);
+  const fullW = c.w / Math.max(c.w, c.h);
+  const w = clamp(c.w / factor, fullW / MAX_ZOOM, fullW);
+  const h = (w * c.h) / c.w;
+  return normalizeCrop({ x: c.x + px * c.w - px * w, y: c.y + py * c.h - py * h, w, h });
 }
 
 export function imageStyle(crop: Crop) {
@@ -48,15 +66,54 @@ type Props = {
   onSelect(cellIndex: number): void;
   onCrop(cellIndex: number, crop: Crop): void;
   onSwap(cellA: number, cellB: number): void;
+  onOpen(cellIndex: number): void;
 };
 
 type DragState = { cell: number; startX: number; startY: number; w: number; h: number; crop: Crop };
 
-export function SpreadView({ spread, format, guides, selectedCell, busy, onSelect, onCrop, onSwap }: Props) {
+export function SpreadView({ spread, format, guides, selectedCell, busy, onSelect, onCrop, onSwap, onOpen }: Props) {
   const drag = useRef<DragState | null>(null);
   const moved = useRef(false);
+  const frame = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ cell: number; crop: Crop } | null>(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const latest = useRef({ spread, selectedCell, busy, draft, onCrop });
+  latest.current = { spread, selectedCell, busy, draft, onCrop };
+  const zoomTimer = useRef<number | undefined>(undefined);
+
+  // A saved edit brings a new spread; the local preview is no longer needed.
+  useEffect(() => setDraft(null), [spread]);
+
+  // Wheel or pinch over the selected cell zooms; React wheel handlers are passive.
+  useEffect(() => {
+    const node = frame.current;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      const state = latest.current;
+      const target = (event.target as HTMLElement).closest<HTMLElement>(".spread-cell");
+      const index = target ? Number(target.dataset.cell) : Number.NaN;
+      if (state.busy || index !== state.selectedCell || !target) return;
+      const cell = state.spread.cells.find((item) => item.index === index);
+      if (!cell?.placement) return;
+      event.preventDefault();
+      const box = target.getBoundingClientRect();
+      const base = state.draft && state.draft.cell === index ? state.draft.crop : cell.placement.crop;
+      const crop = zoomCrop(
+        base,
+        Math.exp(-event.deltaY * 0.002),
+        clamp((event.clientX - box.left) / box.width, 0, 1),
+        clamp((event.clientY - box.top) / box.height, 0, 1),
+      );
+      setDraft({ cell: index, crop });
+      window.clearTimeout(zoomTimer.current);
+      zoomTimer.current = window.setTimeout(() => state.onCrop(index, crop), ZOOM_SAVE_MS);
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      node.removeEventListener("wheel", onWheel);
+      window.clearTimeout(zoomTimer.current);
+    };
+  }, []);
 
   const pct = (mm: number, total: number) => `${(mm / total) * 100}%`;
   const inset = format.bleed_mm + format.safe_mm;
@@ -73,7 +130,7 @@ export function SpreadView({ spread, format, guides, selectedCell, busy, onSelec
       startY: event.clientY,
       w: box.width,
       h: box.height,
-      crop: cell.placement.crop,
+      crop: draft && draft.cell === cell.index ? draft.crop : cell.placement.crop,
     };
   }
 
@@ -107,7 +164,7 @@ export function SpreadView({ spread, format, guides, selectedCell, busy, onSelec
   }
 
   return (
-    <div className="spread-frame" style={{ aspectRatio: `${format.spread_w_mm} / ${format.spread_h_mm}` }}>
+    <div ref={frame} className="spread-frame" style={{ aspectRatio: `${format.spread_w_mm} / ${format.spread_h_mm}` }}>
       {spread.cells.map((cell) => {
         const placement = cell.placement;
         const crop = draft && draft.cell === cell.index ? draft.crop : placement?.crop;
@@ -115,6 +172,7 @@ export function SpreadView({ spread, format, guides, selectedCell, busy, onSelec
         return (
           <div
             key={cell.index}
+            data-cell={cell.index}
             className={[
               "spread-cell",
               selectedCell === cell.index ? "selected" : "",
@@ -130,6 +188,7 @@ export function SpreadView({ spread, format, guides, selectedCell, busy, onSelec
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={cancel}
+            onDoubleClick={() => placement && onOpen(cell.index)}
             onDragOver={(event) => {
               if (busy) return;
               event.preventDefault();
@@ -170,6 +229,18 @@ export function SpreadView({ spread, format, guides, selectedCell, busy, onSelec
               >
                 ⇄
               </span>
+            )}
+            {placement && (
+              <button
+                type="button"
+                className="cell-open"
+                title="Увеличить и выбрать из похожих"
+                aria-label="Увеличить и выбрать из похожих"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => onOpen(cell.index)}
+              >
+                <Maximize2 size={13} />
+              </button>
             )}
             {placement?.replaced_image_id != null && <span className="cell-badge similar">Из похожих</span>}
             {warnings.length > 0 && (

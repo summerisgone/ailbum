@@ -15,6 +15,7 @@ from ailbum.story_naming import _request_json
 
 LABELS = "ABCDEF"
 MAX_REASON = 200
+MAX_WISH = 300
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 
 
@@ -45,6 +46,7 @@ class LayoutAssistant:
         paths: Mapping[int, str],
         orientation: str,
         story_title: str,
+        wish: str = "",
     ) -> AssistantChoice | None:
         count = min(len(variants), len(LABELS))
         if count < 2:
@@ -55,7 +57,8 @@ class LayoutAssistant:
             f"{letters}. Сюжет: «{story_title}». Выбери вариант, который лучше читается как "
             "история и выглядит сбалансированнее: крупный кадр у главного момента, ровный "
             "ритм, без перегруза. Все варианты допустимы, лица не обрезаны. "
-            'Верни только JSON вида {"choice":"A","reason":"коротко почему"}.'
+            + (f"Пожелание автора альбома: «{wish.strip()[:MAX_WISH]}». " if wish.strip() else "")
+            + 'Верни только JSON вида {"choice":"A","reason":"коротко почему"}.'
         )
         try:
             sheet = render_variants(variants[:count], paths, orientation)

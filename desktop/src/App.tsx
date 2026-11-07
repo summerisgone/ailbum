@@ -250,6 +250,22 @@ function App() {
     [library, pending],
   );
 
+  const openPhotosAtStory = useCallback((storyId: number | null) => {
+    setSection("photos");
+    setQuery("");
+    if (storyId == null) return;
+    setStoryJump((current) => ({ storyId, token: (current?.token ?? 0) + 1 }));
+  }, []);
+
+  const setFavoriteById = useCallback(
+    async (imageId: number, favorite: boolean) => {
+      const photo = library?.photos.find((item) => item.id === imageId);
+      if (!photo) throw new Error(`Фото ${imageId} не найдено в каталоге`);
+      await toggleFavorite(photo, favorite);
+    },
+    [library, toggleFavorite],
+  );
+
   const saveTarget = useCallback(async () => {
     if (!library?.run) return;
     const parsed = Math.min(999, Math.max(1, Number.parseInt(targetDraft, 10) || 1));
@@ -376,7 +392,13 @@ function App() {
           <PeopleEditor database={library?.database ?? ""} onError={setError} />
         ) : section === "layout" ? (
           library?.run ? (
-            <LayoutSection key={library.run.id} runId={library.run.id} onError={setError} />
+            <LayoutSection
+              key={library.run.id}
+              runId={library.run.id}
+              onError={setError}
+              onOpenPhotos={openPhotosAtStory}
+              onSetFavorite={setFavoriteById}
+            />
           ) : (
             <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
           )
