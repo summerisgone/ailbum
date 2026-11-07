@@ -81,3 +81,22 @@ import Foundation
         #expect(abs(e - 0.6016645241867412) < 0.02)
     }
 }
+
+@Suite struct SaliencyPerfTests {
+    @Test func testLargeImageSpeedAndFinite() {
+        let w = 800, h = 533
+        var px = [UInt8](repeating: 0, count: w * h * 3)
+        for y in 0..<h { for x in 0..<w {
+            let inBox = x > 300 && x < 500 && y > 200 && y < 350
+            let v = UInt8(inBox ? 230 : 40 + (x * 7 + y * 3) % 25)
+            for c in 0..<3 { px[(y * w + x) * 3 + c] = v }
+        } }
+        let t0 = Date()
+        let (subject, risk) = Saliency.subject(RGBImage(width: w, height: h, pixels: px), maxSide: 1000)
+        let dt = Date().timeIntervalSince(t0)
+        print("saliency 800x533 seconds:", dt)
+        #expect(risk.isFinite && risk >= 0 && risk <= 1)
+        #expect(subject != nil)
+        #expect(dt < 30, "debug seconds \(dt)")  // release ~0.12 s; debug ~12 s
+    }
+}

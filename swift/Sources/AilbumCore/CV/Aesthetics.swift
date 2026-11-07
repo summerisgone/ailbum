@@ -37,11 +37,11 @@ public enum Aesthetics {
             let r = Int32(resized.pixels[i * 3]), g = Int32(resized.pixels[i * 3 + 1]), b = Int32(resized.pixels[i * 3 + 2])
             let v = max(r, g, b)
             let diff = v - min(r, g, b)
-            let s = (diff * sdiv[Int(v)] + (1 << 11)) >> 12
+            let s = (diff * HashColor.sdiv[Int(v)] + (1 << 11)) >> 12
             let vr: Int32 = v == r ? -1 : 0
             let vg: Int32 = v == g ? -1 : 0
             var h = (vr & (g - b)) + (~vr & ((vg & (b - r + 2 * diff)) + (~vg & (r - g + 4 * diff))))
-            h = (h * hdiv[Int(diff)] + (1 << 11)) >> 12
+            h = (h * HashColor.hdiv[Int(diff)] + (1 << 11)) >> 12
             if h < 0 { h += 180 }
             hue[i] = Double(h)
             sat[i] = Double(s) / 255
@@ -125,8 +125,4 @@ public enum Aesthetics {
         }
         return clip(bestScore)
     }
-
-    // OpenCV 8-bit RGB->HSV fixed-point tables (as HashColor)
-    private static let sdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((255.0 * 4096.0) / Double($0)).rounded(.toNearestOrEven)) }
-    private static let hdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((180.0 * 4096.0) / (6.0 * Double($0))).rounded(.toNearestOrEven)) }
 }

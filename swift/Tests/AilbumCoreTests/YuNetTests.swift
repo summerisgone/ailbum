@@ -42,6 +42,14 @@ private func outputs(cells: [(stride: Int, row: Int, col: Int, cls: Float, obj: 
         #expect(abs(r[0].confidence - 0.9) < 1e-5)
     }
 
+    @Test func testNmsUsesTruncatedIntegerBoxes() {
+        // 9.5px boxes 5px apart: float IoU 0.310 (> 0.3) but cv2 NMS on Rect2i gives 0.286 -> both kept
+        var o = outputs(cells: [(8, 10, 20, 0.9, 0.9, log(9.5 / 8)), (8, 10, 21, 0.8, 0.8, log(9.5 / 8))])
+        o["bbox_8"]![(10 * 80 + 21) * 4] = -0.375  // cx = 168 - 3 = 165
+        let r = YuNet.decode(o, inputSize: 640, scale: 1, scoreThreshold: 0.75, nmsThreshold: 0.3, topK: 5000)
+        #expect(r.count == 2)
+    }
+
     @Test func testScaleBack() {
         let o = outputs(cells: [(8, 10, 20, 0.9, 0.9, log(4))])
         let r = YuNet.decode(o, inputSize: 640, scale: 0.5, scoreThreshold: 0.75, nmsThreshold: 0.3, topK: 5000)

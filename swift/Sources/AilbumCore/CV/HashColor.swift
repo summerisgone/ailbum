@@ -14,8 +14,8 @@ public enum HashColor {
     }()
 
     // OpenCV 8-bit fixed-point tables (hsv_shift = 12)
-    private static let sdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((255.0 * 4096.0) / Double($0)).rounded(.toNearestOrEven)) }
-    private static let hdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((180.0 * 4096.0) / (6.0 * Double($0))).rounded(.toNearestOrEven)) }
+    static let sdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((255.0 * 4096.0) / Double($0)).rounded(.toNearestOrEven)) }
+    static let hdiv: [Int32] = (0..<256).map { $0 == 0 ? 0 : Int32(((180.0 * 4096.0) / (6.0 * Double($0))).rounded(.toNearestOrEven)) }
 
     public static func features(_ image: RGBImage) -> (phash: [Bool], histogram: [Float]) {
         let small = image.width == 32 && image.height == 32 ? image : Resize.area(image, width: 32, height: 32)

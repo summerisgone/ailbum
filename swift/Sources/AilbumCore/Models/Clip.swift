@@ -110,7 +110,7 @@ public enum Clip {
 
     public static func analyze(_ images: [RGBImage], threshold: Double, topK: Int) throws -> [SemanticRecord] {
         if images.isEmpty { return [] }
-        let text = try textOverride ?? ClipText.load(modelsDirectory().appendingPathComponent("clip_text.json"))
+        let text = try textOverride ?? ClipText.load(ModelStore.modelsDir.appendingPathComponent("clip_text.json"))
         let embeddings = try (embedder ?? defaultEmbedder)(images)
         return embeddings.map { record(embedding: $0, text: text, threshold: threshold, topK: topK) }
     }
@@ -121,19 +121,6 @@ public enum Clip {
             guard let e = out["image_embeds"] else { throw AilbumError.decode("clip_vision: missing image_embeds") }
             return e
         }
-    }
-
-    private static func modelsDirectory() -> URL {
-        if let env = ProcessInfo.processInfo.environment["AILBUM_MODELS_DIR"] {
-            return URL(fileURLWithPath: env)
-        }
-        var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        while dir.path != "/" {
-            let candidate = dir.appendingPathComponent("Models")
-            if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("clip_text.json").path) { return candidate }
-            dir.deleteLastPathComponent()
-        }
-        return URL(fileURLWithPath: "Models")
     }
 
     private static func round4(_ v: Double) -> Double { (v * 10000).rounded(.toNearestOrEven) / 10000 }

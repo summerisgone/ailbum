@@ -31,18 +31,22 @@ public enum YuNet {
                 }
             }
         }
-        found.sort { $0.score > $1.score }
-        if found.count > topK { found.removeLast(found.count - topK) }
+        // stable by score (cv2 keeps candidate order on ties)
+        let order = found.indices.sorted { found[$0].score != found[$1].score ? found[$0].score > found[$1].score : $0 < $1 }
+        let top = order.prefix(topK).map { found[$0] }
+        // cv2 FaceDetectorYN runs NMS on Rect2i (truncated) boxes
         var kept: [Candidate] = []
-        for c in found {
-            let suppressed = kept.contains { k in
-                let iw = min(c.x + c.w, k.x + k.w) - max(c.x, k.x)
-                let ih = min(c.y + c.h, k.y + k.h) - max(c.y, k.y)
+        var keptBoxes: [SIMD4<Int>] = []
+        for c in top {
+            let b = SIMD4<Int>(Int(c.x), Int(c.y), Int(c.w), Int(c.h))
+            let suppressed = keptBoxes.contains { k in
+                let iw = min(b.x + b.z, k.x + k.z) - max(b.x, k.x)
+                let ih = min(b.y + b.w, k.y + k.w) - max(b.y, k.y)
                 guard iw > 0, ih > 0 else { return false }
-                let inter = iw * ih
-                return inter / (c.w * c.h + k.w * k.h - inter) > nmsThreshold
+                let inter = Float(iw * ih)
+                return inter / Float(b.z * b.w + k.z * k.w - iw * ih) > nmsThreshold
             }
-            if !suppressed { kept.append(c) }
+            if !suppressed { kept.append(c); keptBoxes.append(b) }
         }
         func r(_ v: Float) -> Int { Int((v / scale).rounded(.toNearestOrEven)) }
         return kept.map { c in

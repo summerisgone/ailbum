@@ -4,84 +4,133 @@ import Foundation
 public enum Saliency {
     // MARK: FFT
 
-    private static func fftPow2(_ re: inout [Double], _ im: inout [Double]) {
-        let n = re.count
-        var j = 0
-        for i in 1..<max(n, 1) {
-            var bit = n >> 1
-            while j & bit != 0 { j ^= bit; bit >>= 1 }
-            j ^= bit
-            if i < j { re.swapAt(i, j); im.swapAt(i, j) }
+    /// Radix-2 plan with a precomputed twiddle table.
+    private struct Pow2 {
+        let n: Int
+        let cosT: [Double], sinT: [Double]
+        init(_ n: Int) {
+            self.n = n
+            cosT = (0..<max(n / 2, 1)).map { cos(-2.0 * Double.pi * Double($0) / Double(n)) }
+            sinT = (0..<max(n / 2, 1)).map { sin(-2.0 * Double.pi * Double($0) / Double(n)) }
         }
-        var len = 2
-        while len <= n {
-            let ang = -2.0 * Double.pi / Double(len)
-            for start in stride(from: 0, to: n, by: len) {
-                for k in 0..<(len / 2) {
-                    let wr = cos(ang * Double(k)), wi = sin(ang * Double(k))
-                    let a = start + k, b = a + len / 2
-                    let tr = re[b] * wr - im[b] * wi
-                    let ti = re[b] * wi + im[b] * wr
-                    re[b] = re[a] - tr; im[b] = im[a] - ti
-                    re[a] += tr; im[a] += ti
+
+        func run(_ re: inout [Double], _ im: inout [Double]) {
+            guard n > 1 else { return }
+            re.withUnsafeMutableBufferPointer { r in
+                im.withUnsafeMutableBufferPointer { i in
+                    cosT.withUnsafeBufferPointer { c in
+                        sinT.withUnsafeBufferPointer { s in
+                            Pow2.kernel(n, r.baseAddress!, i.baseAddress!, c.baseAddress!, s.baseAddress!)
+                        }
+                    }
                 }
             }
-            len <<= 1
+        }
+
+        // Kept free of closures so @_optimize applies even in debug builds.
+        @_optimize(speed)
+        static func kernel(_ n: Int, _ re: UnsafeMutablePointer<Double>, _ im: UnsafeMutablePointer<Double>,
+                           _ cosT: UnsafePointer<Double>, _ sinT: UnsafePointer<Double>) {
+            var j = 0
+            for i in 1..<n {
+                var bit = n >> 1
+                while j & bit != 0 { j ^= bit; bit >>= 1 }
+                j ^= bit
+                if i < j {
+                    let tr = re[i]; re[i] = re[j]; re[j] = tr
+                    let ti = im[i]; im[i] = im[j]; im[j] = ti
+                }
+            }
+            var len = 2
+            while len <= n {
+                let half = len / 2, step = n / len
+                var start = 0
+                while start < n {
+                    for k in 0..<half {
+                        let wr = cosT[k * step], wi = sinT[k * step]
+                        let a = start + k, b = a + half
+                        let tr = re[b] * wr - im[b] * wi
+                        let ti = re[b] * wi + im[b] * wr
+                        re[b] = re[a] - tr; im[b] = im[a] - ti
+                        re[a] += tr; im[a] += ti
+                    }
+                    start += len
+                }
+                len <<= 1
+            }
         }
     }
 
-    /// Forward unnormalised DFT of one line; Bluestein chirp-z for non-power-of-two lengths.
-    private static func fft1(_ re: inout [Double], _ im: inout [Double]) {
-        let n = re.count
-        if n <= 1 { return }
-        if n & (n - 1) == 0 { fftPow2(&re, &im); return }
-        var m = 1
-        while m < 2 * n - 1 { m <<= 1 }
-        var wr = [Double](repeating: 0, count: n), wi = wr
-        for k in 0..<n {
-            let ang = -Double.pi * Double((k * k) % (2 * n)) / Double(n)
-            wr[k] = cos(ang); wi[k] = sin(ang)
+    /// Forward unnormalised DFT plan for one length; Bluestein chirp-z for non-power-of-two lengths.
+    private struct Line {
+        let n: Int
+        let m: Int
+        let pow: Pow2
+        var wr: [Double] = [], wi: [Double] = []
+        var bR: [Double] = [], bI: [Double] = []
+
+        init(_ n: Int) {
+            self.n = n
+            if n <= 1 || n & (n - 1) == 0 { m = n; pow = Pow2(n); return }
+            var m = 1
+            while m < 2 * n - 1 { m <<= 1 }
+            self.m = m
+            pow = Pow2(m)
+            wr = [Double](repeating: 0, count: n); wi = wr
+            for k in 0..<n {
+                let ang = -Double.pi * Double((k * k) % (2 * n)) / Double(n)
+                wr[k] = cos(ang); wi[k] = sin(ang)
+            }
+            bR = [Double](repeating: 0, count: m); bI = bR
+            bR[0] = wr[0]; bI[0] = -wi[0]
+            for k in 1..<n {
+                bR[k] = wr[k]; bI[k] = -wi[k]
+                bR[m - k] = wr[k]; bI[m - k] = -wi[k]
+            }
+            pow.run(&bR, &bI)
         }
-        var ar = [Double](repeating: 0, count: m), ai = ar
-        var br = ar, bi = ar
-        for k in 0..<n {
-            ar[k] = re[k] * wr[k] - im[k] * wi[k]
-            ai[k] = re[k] * wi[k] + im[k] * wr[k]
-        }
-        br[0] = wr[0]; bi[0] = -wi[0]
-        for k in 1..<n {
-            br[k] = wr[k]; bi[k] = -wi[k]
-            br[m - k] = wr[k]; bi[m - k] = -wi[k]
-        }
-        fftPow2(&ar, &ai); fftPow2(&br, &bi)
-        for k in 0..<m {
-            let r = ar[k] * br[k] - ai[k] * bi[k]
-            let i = ar[k] * bi[k] + ai[k] * br[k]
-            ar[k] = r; ai[k] = -i // conjugate for inverse via conj trick
-        }
-        fftPow2(&ar, &ai)
-        let s = 1.0 / Double(m)
-        for k in 0..<n {
-            let cr = ar[k] * s, ci = -ai[k] * s
-            re[k] = cr * wr[k] - ci * wi[k]
-            im[k] = cr * wi[k] + ci * wr[k]
+
+        @_optimize(speed)
+        func run(_ re: inout [Double], _ im: inout [Double]) {
+            if n <= 1 { return }
+            if wr.isEmpty { pow.run(&re, &im); return }
+            var ar = [Double](repeating: 0, count: m), ai = ar
+            for k in 0..<n {
+                ar[k] = re[k] * wr[k] - im[k] * wi[k]
+                ai[k] = re[k] * wi[k] + im[k] * wr[k]
+            }
+            pow.run(&ar, &ai)
+            for k in 0..<m {
+                let r = ar[k] * bR[k] - ai[k] * bI[k]
+                let i = ar[k] * bI[k] + ai[k] * bR[k]
+                ar[k] = r; ai[k] = -i // conjugate for inverse via conj trick
+            }
+            pow.run(&ar, &ai)
+            let s = 1.0 / Double(m)
+            for k in 0..<n {
+                let cr = ar[k] * s, ci = -ai[k] * s
+                re[k] = cr * wr[k] - ci * wi[k]
+                im[k] = cr * wi[k] + ci * wr[k]
+            }
         }
     }
 
     /// 2-D DFT (numpy `fft2` / `ifft2`; the inverse is scaled by 1/(w*h)), row-major.
+    @_optimize(speed)
     public static func dft2(_ re: [Double], _ im: [Double], width: Int, height: Int, inverse: Bool) -> ([Double], [Double]) {
         var outR = re, outI = inverse ? im.map { -$0 } : im
+        let rowPlan = Line(width), colPlan = Line(height)
+        var r = [Double](repeating: 0, count: width), i = r
         for y in 0..<height {
-            var r = Array(outR[(y * width)..<((y + 1) * width)])
-            var i = Array(outI[(y * width)..<((y + 1) * width)])
-            fft1(&r, &i)
+            for x in 0..<width { r[x] = outR[y * width + x]; i[x] = outI[y * width + x] }
+            rowPlan.run(&r, &i)
             for x in 0..<width { outR[y * width + x] = r[x]; outI[y * width + x] = i[x] }
         }
+        var cr = [Double](repeating: 0, count: height), ci = cr
         for x in 0..<width {
-            var r = (0..<height).map { outR[$0 * width + x] }
-            var i = (0..<height).map { outI[$0 * width + x] }
-            fft1(&r, &i)
-            for y in 0..<height { outR[y * width + x] = r[y]; outI[y * width + x] = i[y] }
+            for y in 0..<height { cr[y] = outR[y * width + x]; ci[y] = outI[y * width + x] }
+            colPlan.run(&cr, &ci)
+            for y in 0..<height { outR[y * width + x] = cr[y]; outI[y * width + x] = ci[y] }
         }
         if inverse {
             let s = 1.0 / Double(width * height)
@@ -136,20 +185,38 @@ public enum Saliency {
     }
 
     /// Separable filter with REFLECT_101 borders.
+    @_optimize(speed)
     private static func filter(_ src: [Double], width: Int, height: Int, kernel: [Double]) -> [Double] {
-        let r = kernel.count / 2
+        let r = kernel.count / 2, kc = kernel.count
+        let xi = (0..<width).map { x in (0..<kc).map { reflect101(x + $0 - r, width) } }
+        let yi = (0..<height).map { y in (0..<kc).map { reflect101(y + $0 - r, height) * width } }
         var tmp = src
-        for y in 0..<height { for x in 0..<width {
-            var a = 0.0
-            for k in 0..<kernel.count { a += kernel[k] * src[y * width + reflect101(x + k - r, width)] }
-            tmp[y * width + x] = a
-        } }
-        var out = tmp
-        for y in 0..<height { for x in 0..<width {
-            var a = 0.0
-            for k in 0..<kernel.count { a += kernel[k] * tmp[reflect101(y + k - r, height) * width + x] }
-            out[y * width + x] = a
-        } }
+        var out = src
+        src.withUnsafeBufferPointer { s in
+            tmp.withUnsafeMutableBufferPointer { t in
+                for y in 0..<height {
+                    let row = y * width
+                    for x in 0..<width {
+                        var a = 0.0
+                        let idx = xi[x]
+                        for k in 0..<kc { a += kernel[k] * s[row + idx[k]] }
+                        t[row + x] = a
+                    }
+                }
+            }
+        }
+        tmp.withUnsafeBufferPointer { t in
+            out.withUnsafeMutableBufferPointer { o in
+                for y in 0..<height {
+                    let idx = yi[y]
+                    for x in 0..<width {
+                        var a = 0.0
+                        for k in 0..<kc { a += kernel[k] * t[idx[k] + x] }
+                        o[y * width + x] = a
+                    }
+                }
+            }
+        }
         return out
     }
 
