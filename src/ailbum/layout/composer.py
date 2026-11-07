@@ -68,10 +68,28 @@ class _Unit:
         return selected[0] if selected else None
 
 
-def _make_units(photos: Sequence[PhotoFacts], per_photo: bool) -> list[_Unit]:
+def _make_units(
+    photos: Sequence[PhotoFacts], per_photo: bool, split_selected: bool = False
+) -> list[_Unit]:
+    """Units by similar group; with `split_selected` each selected member of a group stands alone.
+
+    Unselected neighbours stay with the group's first selected member.
+    """
     groups: dict[str, list[PhotoFacts]] = {}
+    lead: dict[str, int] = {}
+    if split_selected:
+        for photo in photos:
+            if photo.selected:
+                lead[photo.unit_key] = min(lead.get(photo.unit_key, photo.image_id), photo.image_id)
     for photo in photos:
-        key = f"photo:{photo.image_id}" if per_photo else photo.unit_key
+        if per_photo:
+            key = f"photo:{photo.image_id}"
+        elif split_selected and photo.selected:
+            key = f"{photo.unit_key}#{photo.image_id}"
+        elif split_selected and photo.unit_key in lead:
+            key = f"{photo.unit_key}#{lead[photo.unit_key]}"
+        else:
+            key = photo.unit_key
         groups.setdefault(key, []).append(photo)
     return sorted((_Unit(m) for m in groups.values()), key=lambda u: u.time_key)
 
@@ -182,6 +200,8 @@ def compose_group(
     min_p = max(1, min(MAX_CELLS, params.min_photos))
     max_p = max(1, min(MAX_CELLS, params.max_photos))
     spreads_wanted = max(1, allocation.spreads)
+    if len(units) < spreads_wanted * min_p:
+        units = _make_units(photos, per_photo=False, split_selected=True)
 
     unplaced: list[dict] = []
     overflow = len(units) - spreads_wanted * max_p

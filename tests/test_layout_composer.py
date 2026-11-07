@@ -159,3 +159,27 @@ def test_100_units_under_5s():
     group = compose_group(photos, alloc(100, 20), LayoutParams("vertical", 20, 3, 6))
     assert time.perf_counter() - start < 5
     assert sum(len(s.placements) for s in group.spreads) == 100
+
+
+def test_selected_members_split_when_units_short():
+    photos = [
+        photo(1, unit="cluster:1"),
+        photo(2, unit="cluster:1"),
+        photo(3, unit="cluster:1", selected=False),
+    ]
+    group = compose_group(photos, alloc(1, 1), LayoutParams("vertical", 1, 2, 3))
+    spread = group.spreads[0]
+    assert "underfilled" not in spread.warnings
+    assert sorted(p.image_id for p in spread.placements if p.image_id in (1, 2)) == [1, 2]
+
+
+def test_no_split_when_units_enough():
+    photos = [photo(1, unit="cluster:1"), photo(2, unit="cluster:1"), photo(3)]
+    group = compose_group(photos, alloc(2, 1), LayoutParams("vertical", 1, 2, 3))
+    assert len(group.spreads[0].placements) == 2
+
+
+def test_no_story_ids_group():
+    photos = [photo(i) for i in range(1, 4)]
+    group = compose_group(photos, Allocation((), 3, 1, False), params(1, 3, 3))
+    assert group.spreads[0].story_ids == ()
