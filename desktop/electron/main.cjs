@@ -22,7 +22,6 @@ const mediaPaths = new Map();
 const faceMedia = new Map();
 const thumbnailCache = new Map();
 const THUMBNAIL_CACHE_LIMIT = 256;
-const EXPORT_TIMEOUT_MS = 600_000;
 
 function pythonExecutable() {
   if (process.env.AILBUM_PYTHON) return process.env.AILBUM_PYTHON;
@@ -192,7 +191,13 @@ async function faceThumbnailFor(faceId, face) {
   }
   thumbnail = bridge
     .request("face.thumbnail", { face_id: faceId })
-    .then((result) => Buffer.from(result.base64, "base64"))
+    .then((result) => {
+      if (!result) {
+        thumbnailCache.delete(cacheKey);
+        return null;
+      }
+      return Buffer.from(result.base64, "base64");
+    })
     .catch((error) => {
       thumbnailCache.delete(cacheKey);
       throw error;
@@ -357,6 +362,73 @@ function startDatabaseJob(kind, sources = [], layout) {
   return jobState;
 }
 
+function runBackendJob(kind, extraArgs, stage) {
+  if (activeJob) {
+    return Promise.reject(new Error("Уже выполняется добавление или анализ фотографий"));
+  }
+  const args = [kind, "--database", databasePath, ...extraArgs];
+  const invocation = backendInvocation("job", "ailbum.desktop_job", args);
+  const child = spawn(invocation.executable, invocation.args, {
+    cwd: invocation.cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  activeJob = child;
+  publishJob({ status: "running", kind, stage, detail: "", current: null, total: null, error: null });
+  return new Promise((resolve, reject) => {
+    let result;
+    let reportedError;
+    let stderr = "";
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      if (activeJob === child) activeJob = undefined;
+      if (child.ailbumCancelled) {
+        reject(new Error("Операция отменена"));
+        return;
+      }
+      publishJob({ status: "idle", stage: "", detail: "", current: null, total: null });
+      if (error) reject(error);
+      else resolve(result);
+    };
+    const lines = readline.createInterface({ input: child.stdout });
+    lines.on("line", (line) => {
+      try {
+        const update = JSON.parse(line);
+        if (update.type === "progress") {
+          publishJob({
+            status: "running",
+            stage: update.stage,
+            detail: update.detail || "",
+            current: update.current ?? null,
+            total: update.total ?? null,
+          });
+        } else if (update.type === "error") {
+          reportedError = update.error;
+        } else if (update.type === "complete") {
+          result = update.result;
+        }
+      } catch {
+        publishJob({ status: "running", detail: line });
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-4000);
+      console.error(`[ailbum-job] ${chunk}`);
+    });
+    child.on("error", (error) => finish(error));
+    child.on("exit", (code) => {
+      if (code !== 0) {
+        const fallback = stderr.trim().split("\n").at(-1);
+        finish(new Error(reportedError || fallback || `Фоновый процесс завершился с кодом ${code}`));
+      } else {
+        finish();
+      }
+    });
+  });
+}
+
 app.whenReady().then(() => {
   initializeRuntimePaths();
   startBridge();
@@ -380,6 +452,7 @@ app.whenReady().then(() => {
         return new Response("Face not found", { status: 404 });
       }
       const bytes = await faceThumbnailFor(imageId, face);
+      if (!bytes) return new Response("No face source", { status: 404 });
       return new Response(bytes, {
         headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=3600" },
       });
@@ -443,19 +516,21 @@ app.whenReady().then(() => {
   ipcMain.handle("album:usage", () => bridge.request("album.usage"));
   ipcMain.handle("album:archive", async (_event, { albumId }) => {
     const id = Number(albumId);
-    let plan = await bridge.request("album.prepare_archive", { album_id: id }, EXPORT_TIMEOUT_MS);
+    const prepare = () =>
+      runBackendJob("prepare-archive", ["--album-id", String(id)], "Подготовка превью");
+    let plan = await prepare();
     if (plan.needs_export) {
       const chosen = await dialog.showOpenDialog({
         title: "Куда сохранить оригиналы перед удалением",
         properties: ["openDirectory", "createDirectory"],
       });
       if (chosen.canceled || !chosen.filePaths[0]) return { cancelled: true };
-      await bridge.request(
-        "layout.export",
-        { album_id: id, folder: path.resolve(chosen.filePaths[0]) },
-        EXPORT_TIMEOUT_MS,
+      await runBackendJob(
+        "export",
+        ["--album-id", String(id), "--folder", path.resolve(chosen.filePaths[0])],
+        "Копирование оригиналов",
       );
-      plan = await bridge.request("album.prepare_archive", { album_id: id }, EXPORT_TIMEOUT_MS);
+      plan = await prepare();
       if (plan.needs_export) {
         return { needsExport: true, blocked: plan.blocked || [] };
       }
@@ -619,10 +694,10 @@ app.whenReady().then(() => {
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const exported = await bridge.request(
-      "layout.export",
-      { album_id: Number(albumId), folder: path.resolve(result.filePaths[0]) },
-      EXPORT_TIMEOUT_MS,
+    const exported = await runBackendJob(
+      "export",
+      ["--album-id", String(Number(albumId)), "--folder", path.resolve(result.filePaths[0])],
+      "Копирование оригиналов",
     );
     shell.openPath(exported.folder);
     return exported;
