@@ -121,3 +121,56 @@ def test_image_source_accepts_sqlite_row(tmp_path):
     connection.row_factory = sqlite3.Row
     row = connection.execute("SELECT ? AS path, 'ab' AS sha256, 'present' AS availability", (str(src),)).fetchone()
     assert proxies.image_source(db, row) == src
+
+
+def test_oversized_image_gets_proxy_and_limit_restored(tmp_path, monkeypatch):
+    src = tmp_path / "huge.jpg"
+    jpeg(src, (3000, 2000))
+    db = make_db(tmp_path, [(1, str(src), "hg", "present", 3000, 2000, 1)], [(7, 1, 100, 100, 200, 200)])
+    # 6 MP source is over 2x this limit (bomb error); the 1.7 MP proxy stays under it
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 2_500_000)
+    result = proxies.build_proxies(db, [1])
+    assert result == {"built": [1], "failed": []}
+    assert Image.MAX_IMAGE_PIXELS == 2_500_000
+    with Image.open(tmp_path / "db" / "proxies" / "photos" / "hg.jpg") as im:
+        assert im.size == (1600, 1067)
+    assert (tmp_path / "db" / "proxies" / "faces" / "7.jpg").is_file()
+
+
+def test_limit_restored_when_open_fails(tmp_path, monkeypatch):
+    bad = tmp_path / "bad.jpg"
+    bad.write_bytes(b"not an image")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1234)
+    try:
+        proxies._load_rgb(bad)
+    except OSError:
+        pass
+    assert Image.MAX_IMAGE_PIXELS == 1234
+
+
+def test_build_proxies_reports_progress(tmp_path):
+    src = tmp_path / "p.jpg"
+    jpeg(src, (200, 100))
+    db = make_db(tmp_path, [(1, str(src), "p", "present", 200, 100, 1)])
+    seen = []
+    proxies.build_proxies(db, [1, 99], lambda current, total: seen.append((current, total)))
+    assert seen == [(1, 2), (2, 2)]
+
+
+def test_face_thumbnail_without_source_is_none(tmp_path):
+    db = make_db(
+        tmp_path,
+        [(1, str(tmp_path / "gone.jpg"), "gn", "missing", 100, 100, 1)],
+        [(4, 1, 10, 10, 20, 20)],
+    )
+    assert proxies.face_thumbnail(db, 4) is None
+
+
+def test_face_thumbnail_from_original_writes_face_proxy(tmp_path):
+    src = tmp_path / "o.jpg"
+    jpeg(src, (400, 300))
+    db = make_db(tmp_path, [(1, str(src), "or", "present", 400, 300, 1)], [(5, 1, 100, 100, 100, 100)])
+    data = proxies.face_thumbnail(db, 5)
+    cached = tmp_path / "db" / "proxies" / "faces" / "5.jpg"
+    assert cached.read_bytes() == data
+    assert not list((tmp_path / "db").rglob("*.tmp"))

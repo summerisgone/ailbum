@@ -82,6 +82,11 @@ def test_face_thumbnail(db, monkeypatch):
     assert base64.b64decode(out["base64"]) == b"jpg\x05"
 
 
+def test_face_thumbnail_without_source_is_null(db, monkeypatch):
+    monkeypatch.setattr(proxies, "face_thumbnail", lambda d, f: None)
+    assert call(db, "face.thumbnail", face_id=5) is None
+
+
 def test_unknown_and_error_response(db, monkeypatch, capsys):
     with pytest.raises(ValueError):
         call(db, "nope")

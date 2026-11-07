@@ -102,6 +102,38 @@ def test_job_parser_accepts_layout_kind():
     assert args.kind == "layout" and args.album_id == 1 and args.params == "{}"
 
 
+def test_prepare_archive_job_reports_proxy_progress(monkeypatch, capsys):
+    from ailbum import archive
+
+    def fake_prepare(database, album_id, progress=None):
+        progress(1, 2)
+        progress(2, 2)
+        return {"album_id": album_id, "needs_export": False, "trash": [], "blocked": []}
+
+    monkeypatch.setattr(archive, "prepare_archive", fake_prepare)
+    desktop_job.main(["prepare-archive", "--database", "a.db", "--album-id", "4"])
+    lines = [json.loads(x) for x in capsys.readouterr().out.strip().splitlines()]
+    progress = [x for x in lines if x["type"] == "progress" and x.get("total")]
+    assert [(x["current"], x["total"]) for x in progress] == [(1, 2), (2, 2)]
+    assert lines[-1]["type"] == "complete" and lines[-1]["result"]["album_id"] == 4
+
+
+def test_export_job_runs_export_originals(monkeypatch, capsys):
+    from ailbum.layout import export
+
+    seen = {}
+
+    def fake_export(database, album_id, folder):
+        seen["args"] = (album_id, folder)
+        return {"folder": "x", "count": 1, "missing": []}
+
+    monkeypatch.setattr(export, "export_originals", fake_export)
+    desktop_job.main(["export", "--database", "a.db", "--album-id", "4", "--folder", "out"])
+    lines = [json.loads(x) for x in capsys.readouterr().out.strip().splitlines()]
+    assert lines[-1] == {"type": "complete", "result": {"folder": "x", "count": 1, "missing": []}}
+    assert seen["args"] == (4, Path("out"))
+
+
 def test_invalid_params_json_emits_error_event(capsys):
     with pytest.raises(SystemExit) as exit_info:
         desktop_job.main(["layout", "--database", "a.db", "--album-id", "1", "--params", "{bad"])

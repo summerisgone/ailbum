@@ -119,7 +119,7 @@ export type DatabaseSummary = {
 
 export type DatabaseJob = {
   status: "idle" | "running" | "complete" | "error" | "cancelled";
-  kind?: "index" | "analyze" | "layout";
+  kind?: "index" | "analyze" | "layout" | "prepare-archive" | "export";
   stage?: string;
   detail?: string;
   current?: number | null;

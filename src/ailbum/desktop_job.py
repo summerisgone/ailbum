@@ -169,15 +169,43 @@ def run_layout(
     )
 
 
+def run_prepare_archive(database: Path, album_id: int) -> dict[str, object]:
+    from ailbum import archive
+
+    stage = "Подготовка превью"
+    emit({"type": "progress", "stage": stage, "detail": "", "current": 0, "total": None})
+    return archive.prepare_archive(
+        database,
+        album_id,
+        lambda current, total: emit(
+            {
+                "type": "progress",
+                "stage": stage,
+                "detail": f"превью {current}/{total}",
+                "current": current,
+                "total": total,
+            }
+        ),
+    )
+
+
+def run_export(database: Path, album_id: int, folder: Path) -> dict[str, object]:
+    from ailbum.layout.export import export_originals
+
+    emit({"type": "progress", "stage": "Копирование оригиналов", "detail": folder.name})
+    return export_originals(database, album_id, folder)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Ailbum Electron background job")
-    parser.add_argument("kind", choices=("index", "analyze", "layout"))
+    parser.add_argument("kind", choices=("index", "analyze", "layout", "prepare-archive", "export"))
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--models-dir", type=Path)
     parser.add_argument("--album-id", type=int)
     parser.add_argument("--params")
+    parser.add_argument("--folder", type=Path)
     return parser
 
 
@@ -188,6 +216,14 @@ def main(argv: list[str] | None = None) -> None:
             if args.album_id is None or args.params is None:
                 raise ValueError("Не указаны альбом и параметры раскладки")
             result = run_layout(args.database, args.album_id, args.params, args.models_dir)
+        elif args.kind == "prepare-archive":
+            if args.album_id is None:
+                raise ValueError("Не указан альбом")
+            result = run_prepare_archive(args.database, args.album_id)
+        elif args.kind == "export":
+            if args.album_id is None or args.folder is None:
+                raise ValueError("Не указаны альбом и папка")
+            result = run_export(args.database, args.album_id, args.folder)
         elif args.kind == "index":
             if not args.source:
                 raise ValueError("Не выбраны папки с фотографиями")
