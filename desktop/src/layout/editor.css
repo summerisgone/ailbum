@@ -1,0 +1,34 @@
+.layout-editor { display: flex; gap: 16px; height: 100%; min-height: 0; }
+.layout-editor-main { flex: 1; min-width: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+.layout-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 8px; background: #fff3d6; border: 1px solid #e3c36f; }
+.layout-banner.info { background: #eef1ee; border-color: #d4d9d4; justify-content: flex-start; }
+.guides-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.spread-section { display: flex; flex-direction: column; gap: 8px; max-width: 960px; }
+.spread-header { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.spread-header span:not(.cell-badge) { color: #6b716d; }
+.spread-reason { margin: 0; font-size: 13px; color: #6b716d; }
+.spread-frame { position: relative; width: 100%; background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18); overflow: hidden; }
+.spread-cell { position: absolute; overflow: hidden; background: #dde0dc; cursor: grab; touch-action: none; user-select: none; }
+.spread-cell.selected { outline: 3px solid #2f7d5b; outline-offset: -3px; z-index: 2; }
+.spread-cell.drop { outline: 3px dashed #2f7d5b; outline-offset: -3px; }
+.spread-photo { position: absolute; max-width: none; pointer-events: none; display: block; }
+.spread-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #6b716d; }
+.swap-grip { position: absolute; right: 6px; bottom: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; background: rgba(255, 255, 255, 0.85); cursor: grab; font-size: 14px; }
+.cell-badge { position: absolute; left: 6px; padding: 2px 6px; border-radius: 4px; font-size: 11px; background: rgba(32, 35, 33, 0.8); color: #fff; max-width: calc(100% - 12px); }
+.cell-badge.similar { top: 6px; background: rgba(47, 125, 91, 0.9); }
+.cell-badge.warn { top: 28px; background: rgba(184, 74, 40, 0.92); }
+.cell-badge.static { position: static; display: inline-block; }
+.spread-guides { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.guide { position: absolute; }
+.guide.bleed { border: 1px dashed #d23c3c; }
+.guide.safe { border: 1px dashed #2f7d5b; }
+.guide.spine { top: 0; bottom: 0; background: rgba(60, 90, 210, 0.14); border-left: 1px dashed #3c5ad2; border-right: 1px dashed #3c5ad2; }
+.layout-panel { width: 300px; flex: 0 0 300px; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; border-left: 1px solid #d4d9d4; background: #fafaf8; }
+.layout-panel h3, .layout-panel h4 { margin: 0; }
+.panel-note { margin: 0; font-size: 13px; color: #2f7d5b; }
+.panel-templates { display: flex; flex-wrap: wrap; gap: 6px; }
+.panel-candidates { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.panel-candidates button { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid #d4d9d4; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+.panel-candidates button.current { border-color: #2f7d5b; }
+.panel-candidates button:disabled { cursor: default; }
+.panel-candidates img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; }
