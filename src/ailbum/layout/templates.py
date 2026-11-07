@@ -63,6 +63,45 @@ _VERTICAL: tuple[tuple[str, _Node, float, bool], ...] = (
     ("page_2_3", _PAGE_2_3, 0.0, True),
 )
 
+
+def _inset(mm: float, node: _Node) -> _Node:
+    return ("I", mm, node)
+
+
+def _pages(left: _Node, right: _Node) -> _Node:
+    return ("V", (0.5,), (left, right))
+
+
+# One-page collages (portrait page) from the user's examples; paired with a full page.
+_PAGE_LAYOUTS: tuple[tuple[str, _Node], ...] = (
+    ("page_duo_wide", ("H", (0.5,), (("V", (0.5,), (_C, _C)), _C))),
+    ("page_stagger", ("V", (0.5,), (("H", (0.6,), (_C, _C)), ("H", (0.4,), (_C, _C))))),
+    ("page_band", _inset(12.0, ("H", (0.375, 0.625), (_C, ("V", (0.5,), (_C, _C)), _C)))),
+    ("page_hero_3", _inset(8.0, ("H", (0.64,), (_C, ("V", _THIRDS, (_C, _C, _C)))))),
+    ("page_cols_3_2", ("V", (0.5,), (("H", _THIRDS, (_C, _C, _C)), ("H", (0.5,), (_C, _C))))),
+    ("page_brick", ("H", _THIRDS, (
+        ("V", (0.65,), (_C, _C)), ("V", (0.35,), (_C, _C)), ("V", (0.65,), (_C, _C))))),
+    ("page_grid_2x3", ("H", _THIRDS, tuple(("V", (0.5,), (_C, _C)) for _ in range(3)))),
+    ("page_corner", ("H", (1 / 3,), (
+        ("V", _THIRDS, (_C, _C, _C)), ("V", (1 / 3,), (("H", (0.5,), (_C, _C)), _C))))),
+    ("page_pinwheel", ("H", (0.5,), (
+        ("V", (0.66,), (_C, ("H", (0.5,), (_C, _C)))),
+        ("V", (0.34,), (("H", (0.5,), (_C, _C)), _C))))),
+    ("page_cols_3_4", ("V", (0.5,), (
+        ("H", (0.25, 0.75), (_C, _C, _C)), ("H", (0.25, 0.5, 0.75), (_C, _C, _C, _C))))),
+)
+_PINWHEEL_INSET = ("page_pinwheel_inset", _inset(8.0, _PAGE_LAYOUTS[8][1]))
+
+# Spreads for few photos.
+_FEW: tuple[tuple[str, _Node, float, bool], ...] = (
+    ("full_inset", _C, 15.0, False),
+    ("pages_inset", _pages(_inset(12.0, _C), _inset(12.0, _C)), 0.0, False),
+    ("page_1_inset", _pages(_C, _inset(20.0, _C)), 0.0, True),
+    ("wide_1_1", ("V", (0.62,), (_C, _C)), 0.0, True),
+    ("row_3", ("V", _THIRDS, (_C, _C, _C)), 0.0, False),
+    ("pano_2", ("H", (0.6,), (_C, ("V", (0.5,), (_C, _C)))), 0.0, False),
+)
+
 _ROW_4: tuple[str, _Node, float, bool] = (
     "row_4", ("V", (0.25, 0.5, 0.75), (_C, _C, _C, _C)), 0.0, False)
 _PAGE_3: tuple[str, _Node, float, bool] = (
@@ -88,9 +127,14 @@ def templates_for(orientation: str, photo_count: int | None = None) -> list[Temp
 @cache
 def _catalog(orientation: str) -> tuple[Template, ...]:
     fmt = format_for(orientation)
-    entries = _VERTICAL
+    entries = _VERTICAL + _FEW
     if orientation == "horizontal":
-        entries = tuple(_HORIZONTAL_REPLACED.get(e[0], e) for e in _VERTICAL)
+        entries = tuple(_HORIZONTAL_REPLACED.get(e[0], e) for e in entries)
+    for template_id, page in (*_PAGE_LAYOUTS, _PINWHEEL_INSET):
+        # Landscape pages get the portrait design turned on its side.
+        if orientation == "horizontal":
+            page = _transpose(page)
+        entries += ((template_id, _pages(_C, page), 0.0, True),)
     result: list[Template] = []
     for template_id, tree, inset, mirrored in entries:
         base = _build(template_id, tree, inset, fmt)
@@ -116,6 +160,11 @@ def _split(node: _Node, box, sides, leaves) -> None:
     if node == _C:
         leaves.append((box, sides))
         return
+    if node[0] == "I":
+        _, mm, child = node
+        x0, y0, x1, y1 = box
+        _split(child, (x0 + mm, y0 + mm, x1 - mm, y1 - mm), ("inset",) * 4, leaves)
+        return
     axis, cuts, children = node
     x0, y0, x1, y1 = box
     start, end = (x0, x1) if axis == "V" else (y0, y1)
@@ -131,6 +180,15 @@ def _split(node: _Node, box, sides, leaves) -> None:
             child_box = (x0, a, x1, b)
             child_sides = (left, top if i == 0 else "cut", right, bottom if i == last else "cut")
         _split(child, child_box, child_sides, leaves)
+
+
+def _transpose(node: _Node) -> _Node:
+    if node == _C:
+        return node
+    if node[0] == "I":
+        return ("I", node[1], _transpose(node[2]))
+    axis, cuts, children = node
+    return ("H" if axis == "V" else "V", cuts, tuple(_transpose(c) for c in children))
 
 
 def _cell(index: int, box, sides, fmt: AlbumFormat) -> Cell:

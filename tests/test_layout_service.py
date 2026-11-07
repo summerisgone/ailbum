@@ -293,8 +293,8 @@ def test_preflight_range_errors(env: Env) -> None:
     _pool(env, {1: 5})
     result = service.preflight(env.db, "r", LayoutParams("vertical", 1, 5, 3))
     assert any("больше максимума" in e for e in result["errors"])
-    result = service.preflight(env.db, "r", LayoutParams("vertical", 1, 0, 7))
-    assert any("от 1 до 6" in e for e in result["errors"])
+    result = service.preflight(env.db, "r", LayoutParams("vertical", 1, 0, 9))
+    assert any("от 1 до 8" in e for e in result["errors"])
 
 
 def test_preflight_fewer_units_than_spreads(env: Env) -> None:

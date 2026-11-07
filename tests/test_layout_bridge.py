@@ -78,7 +78,7 @@ def test_dispatch_layout_get_null(tmp_path: Path):
 def test_dispatch_templates():
     result = desktop_bridge._dispatch(Path("x.db"), "layout.templates",
                                       {"orientation": "vertical", "photo_count": 3})
-    assert {t["id"] for t in result} == {"page_2h", "page_2h_m"}
+    assert {t["id"] for t in result} == {"page_2h", "page_2h_m", "row_3", "pano_2"}
     cell = result[0]["cells"][0]
     assert set(cell) == {"index", "x", "y", "w", "h"}
     assert 0 <= cell["x"] <= 1 and 0 < cell["w"] <= 1

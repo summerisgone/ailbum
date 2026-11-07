@@ -99,8 +99,9 @@ def test_page_2_3_has_6_cells():
 
 
 def test_templates_for_photo_count():
-    assert [t.id for t in templates_for("vertical", 3)] == ["page_2h", "page_2h_m"]
-    assert templates_for("vertical", 7) == []
+    assert [t.id for t in templates_for("vertical", 3)] == [
+        "page_2h", "page_2h_m", "row_3", "pano_2"]
+    assert templates_for("vertical", 9) == []
     assert all(t.photo_count == 4 for t in templates_for("horizontal", 4))
 
 
@@ -149,3 +150,40 @@ def test_ids_unique_per_orientation():
 def test_returned_list_is_a_copy():
     templates_for("vertical").clear()
     assert templates_for("vertical")
+
+
+@pytest.mark.parametrize("orientation", ORIENTATIONS)
+def test_every_count_up_to_8_has_choice(orientation):
+    for count in range(1, 9):
+        assert len(templates_for(orientation, count)) >= 2, count
+
+
+@pytest.mark.parametrize(
+    ("template_id", "count"),
+    [("page_duo_wide", 4), ("page_stagger", 5), ("page_band", 5), ("page_hero_3", 5),
+     ("page_cols_3_2", 6), ("page_brick", 7), ("page_grid_2x3", 7), ("page_corner", 7),
+     ("page_pinwheel", 7), ("page_pinwheel_inset", 7), ("page_cols_3_4", 8)],
+)
+def test_example_pages_pair_with_full_page(template_id, count):
+    fmt = format_for("vertical")
+    for template in (by_id("vertical", template_id), by_id("vertical", f"{template_id}_m")):
+        assert template.photo_count == count
+        full = [c for c in template.cells if c.rect.w > fmt.page_w_mm - 5 and c.rect.h > 290]
+        assert len(full) == 1
+        assert all(c.spine_band is None for c in template.cells)
+
+
+def test_page_inset_keeps_margin_on_its_page_only():
+    fmt = format_for("vertical")
+    cells = by_id("vertical", "page_band").cells
+    assert cells[0].rect.x == 0.0
+    page_cells = cells[1:]
+    centre = fmt.spread_w_mm / 2
+    assert min(c.rect.x for c in page_cells) == pytest.approx(centre + 12.0)
+    assert min(c.rect.y for c in page_cells) == pytest.approx(fmt.bleed_mm + 12.0)
+
+
+def test_horizontal_pages_are_transposed():
+    cells = by_id("horizontal", "page_grid_2x3").cells[1:]
+    assert len({round(c.rect.x, 3) for c in cells}) == 3
+    assert len({round(c.rect.y, 3) for c in cells}) == 2

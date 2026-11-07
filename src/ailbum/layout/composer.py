@@ -14,7 +14,7 @@ SELECTED_BONUS = 0.15
 RANK_WEIGHT = 0.25
 REPEAT_COST = 0.15
 UNDERFILL_COST = 1000.0
-MAX_CELLS = 6
+MAX_CELLS = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,8 +282,10 @@ def _partition(
                     continue
                 penalty = UNDERFILL_COST * max(0, min_p - size)
                 for template, value, assignment in chunk_options(i, size):
-                    total = base + value - penalty - (REPEAT_COST if template.id == last else 0.0)
-                    key = (done + 1, template.id)
+                    # A mirrored variant still repeats its base template.
+                    shape = template.id.removesuffix("_m")
+                    total = base + value - penalty - (REPEAT_COST if shape == last else 0.0)
+                    key = (done + 1, shape)
                     current = layers[i + size].get(key)
                     if current is None or total > current[0]:
                         layers[i + size][key] = (

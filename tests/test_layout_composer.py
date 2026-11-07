@@ -63,7 +63,7 @@ def test_time_order_between_spreads():
 def test_no_adjacent_repeat_when_alternative_exists():
     photos = [photo(i) for i in range(1, 13)]
     group = compose_group(photos, alloc(12, 4), params(4))
-    ids = [s.template_id for s in group.spreads]
+    ids = [s.template_id.removesuffix("_m") for s in group.spreads]
     assert all(a != b for a, b in pairwise(ids))
 
 
@@ -142,7 +142,7 @@ def test_best_variants_limit_and_order():
     variants = best_variants([photo(i) for i in range(1, 5)], params(1), limit=3)
     assert len(variants) == 3
     assert variants[0].score >= variants[1].score >= variants[2].score
-    assert best_variants([photo(1)], params(1), limit=1)[0].template_id == "full"
+    assert best_variants([photo(1)], params(1), limit=1)[0].template_id in {"full", "full_inset"}
 
 
 def test_face_not_cut_in_placements():

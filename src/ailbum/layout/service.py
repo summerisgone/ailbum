@@ -126,8 +126,8 @@ def _validate(params: LayoutParams, unit_count: int) -> list[str]:
     if params.spread_count < 1:
         errors.append("Число разворотов должно быть не меньше 1")
     for value in (params.min_photos, params.max_photos):
-        if not 1 <= value <= 6:
-            errors.append("Число фото на коллаже должно быть от 1 до 6")
+        if not 1 <= value <= 8:
+            errors.append("Число фото на коллаже должно быть от 1 до 8")
             break
     if params.min_photos > params.max_photos:
         errors.append("Минимум фото на коллаже не может быть больше максимума")
