@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
 import sqlite3
-import sys
-import types
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,20 +16,6 @@ class Rect:
     y: float
     w: float
     h: float
-
-
-@dataclass
-class FakeCell:
-    index: int
-    rect: Rect
-    safe: Rect
-    spine_band: Rect | None
-
-
-@dataclass
-class FakeTemplate:
-    id: str
-    cells: list[FakeCell]
 
 
 @dataclass
@@ -61,25 +44,6 @@ class Params:
     min_photos: int = 3
     max_photos: int = 6
     assistant: str = "auto"
-
-
-@pytest.fixture(autouse=True)
-def templates(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fake templates module by default; real one when SUPERLITE_REAL=1."""
-    if os.environ.get("SUPERLITE_REAL") == "1":
-        return
-    fmt = types.SimpleNamespace(
-        spread_w_mm=426.0, spread_h_mm=303.0, bleed_mm=3.0, safe_mm=3.0
-    )
-    cells = [
-        FakeCell(0, Rect(0, 0, 213, 303), Rect(3, 3, 207, 297), None),
-        FakeCell(1, Rect(213, 0, 213, 151.5), Rect(213, 3, 207, 145), Rect(205, 0, 16, 151.5)),
-        FakeCell(2, Rect(213, 151.5, 213, 151.5), Rect(213, 151.5, 207, 148), None),
-    ]
-    module = types.ModuleType("ailbum.layout.templates")
-    module.format_for = lambda orientation: fmt
-    module.templates_for = lambda orientation, photo_count=None: [FakeTemplate("page_2h", cells)]
-    monkeypatch.setitem(sys.modules, "ailbum.layout.templates", module)
 
 
 def _seed(connection: sqlite3.Connection, run_id: str = "r") -> None:
@@ -189,13 +153,25 @@ def test_round_trip_matches_contract(conn: sqlite3.Connection) -> None:
 def test_cell_fractions_from_template(conn: sqlite3.Connection) -> None:
     _save(conn)
     cells = load_layout(conn, "r")["spreads"][0]["cells"]
-    assert (cells[0]["x"], cells[0]["y"], cells[0]["w"], cells[0]["h"]) == (0.0, 0.0, 0.5, 1.0)
-    assert cells[1]["x"] == 0.5 and cells[1]["y"] == 0.0 and cells[1]["h"] == 0.5
-    assert cells[2]["y"] == 0.5
-    assert [c["crosses_spine"] for c in cells] == [False, True, False]
+    assert cells[0]["x"] == 0.0 and cells[0]["y"] == 0.0 and cells[0]["h"] == 1.0
+    assert cells[0]["w"] == pytest.approx(210.5 / 426.0, abs=1e-4)
+    assert cells[1]["x"] == pytest.approx(215.5 / 426.0, abs=1e-4)
+    assert cells[1]["h"] == pytest.approx(149.0 / 303.0, abs=1e-4)
+    assert cells[2]["y"] == pytest.approx(154.0 / 303.0, abs=1e-4)
+    assert [c["crosses_spine"] for c in cells] == [False, False, False]
     for c in cells:
         assert 0.0 <= c["x"] and c["x"] + c["w"] <= 1.0
         assert 0.0 <= c["y"] and c["y"] + c["h"] <= 1.0
+
+
+def test_full_template_crosses_spine(conn: sqlite3.Connection) -> None:
+    spread = _spread()
+    spread.template_id = "full"
+    spread.placements = spread.placements[:1]
+    _save(conn, [spread])
+    cell = load_layout(conn, "r")["spreads"][0]["cells"][0]
+    assert cell["crosses_spine"] is True
+    assert (cell["x"], cell["w"]) == (0.0, 1.0)
 
 
 def test_story_title_joined_for_merged(conn: sqlite3.Connection) -> None:
