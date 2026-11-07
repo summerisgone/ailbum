@@ -54,6 +54,7 @@ export function LayoutSection({ runId, onError }: Props) {
   const layoutRunning = running && job.kind === "layout";
 
   const create = async (params: WizardParams) => {
+    if (layout && !window.confirm("Заменить текущую раскладку?")) return;
     try {
       setJob(await window.ailbum.startLayout(runId, params));
     } catch (reason) {

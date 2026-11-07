@@ -95,10 +95,13 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError }: Props) {
         {layout.unplaced.length > 0 && (
           <div className="layout-banner info">Не поместилось кадров: {layout.unplaced.length}</div>
         )}
-        <label className="guides-toggle">
-          <input type="checkbox" checked={guides} onChange={(event) => setGuides(event.target.checked)} />
-          Направляющие
-        </label>
+        <div className="layout-toolbar">
+          <label className="guides-toggle">
+            <input type="checkbox" checked={guides} onChange={(event) => setGuides(event.target.checked)} />
+            Направляющие
+          </label>
+          <button type="button" onClick={onRecreate}>Новая раскладка</button>
+        </div>
         {layout.spreads.map((item) => (
           <section key={item.id} className="spread-section">
             <header className="spread-header">

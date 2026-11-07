@@ -32,3 +32,5 @@
 .panel-candidates button.current { border-color: #2f7d5b; }
 .panel-candidates button:disabled { cursor: default; }
 .panel-candidates img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; }
+
+.layout-toolbar { display: flex; align-items: center; gap: 16px; }
