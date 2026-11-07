@@ -276,10 +276,11 @@ function publishJob(update) {
   mainWindow?.webContents.send("database:job-progress", jobState);
 }
 
-function startDatabaseJob(kind, sources = []) {
+function startDatabaseJob(kind, sources = [], layout) {
   if (activeJob) throw new Error("Уже выполняется добавление или анализ фотографий");
   const args = [kind, "--database", databasePath, "--models-dir", runtimeModelsPath()];
   for (const source of sources) args.push("--source", path.resolve(source));
+  if (kind === "layout") args.push("--run-id", layout.runId, "--params", JSON.stringify(layout.params));
   const invocation = backendInvocation("job", "ailbum.desktop_job", args);
   const process = spawn(invocation.executable, invocation.args, {
     cwd: invocation.cwd,
@@ -292,7 +293,12 @@ function startDatabaseJob(kind, sources = []) {
   publishJob({
     status: "running",
     kind,
-    stage: kind === "index" ? "Подготовка добавления" : "Подготовка анализа",
+    stage:
+      kind === "index"
+        ? "Подготовка добавления"
+        : kind === "layout"
+          ? "Подготовка раскладки"
+          : "Подготовка анализа",
     detail: "",
     current: null,
     total: null,
@@ -470,6 +476,54 @@ app.whenReady().then(() => {
     if (!['index', 'analyze'].includes(kind)) throw new Error("Неизвестный тип операции");
     return startDatabaseJob(kind, Array.isArray(sources) ? sources : []);
   });
+  ipcMain.handle("layout:start", (_event, { runId, params }) =>
+    startDatabaseJob("layout", [], { runId: String(runId), params: params || {} }),
+  );
+  ipcMain.handle("layout:preflight", (_event, { runId, params }) =>
+    bridge.request("layout.preflight", { run_id: String(runId), ...params }),
+  );
+  ipcMain.handle("layout:get", (_event, { runId }) =>
+    bridge.request("layout.get", { run_id: String(runId) }),
+  );
+  ipcMain.handle("layout:templates", (_event, { orientation, photoCount }) =>
+    bridge.request("layout.templates", { orientation, photo_count: Number(photoCount) }),
+  );
+  ipcMain.handle("layout:alternatives", (_event, { spreadId, cellIndex }) =>
+    bridge.request("layout.alternatives", {
+      spread_id: Number(spreadId),
+      cell_index: Number(cellIndex),
+    }),
+  );
+  ipcMain.handle("layout:set-photo", (_event, { spreadId, cellIndex, imageId }) =>
+    bridge.request("layout.set_photo", {
+      spread_id: Number(spreadId),
+      cell_index: Number(cellIndex),
+      image_id: Number(imageId),
+    }),
+  );
+  ipcMain.handle("layout:swap-cells", (_event, { spreadId, cellA, cellB }) =>
+    bridge.request("layout.swap_cells", {
+      spread_id: Number(spreadId),
+      cell_a: Number(cellA),
+      cell_b: Number(cellB),
+    }),
+  );
+  ipcMain.handle("layout:set-template", (_event, { spreadId, templateId }) =>
+    bridge.request("layout.set_template", {
+      spread_id: Number(spreadId),
+      template_id: String(templateId),
+    }),
+  );
+  ipcMain.handle("layout:set-crop", (_event, { spreadId, cellIndex, crop }) =>
+    bridge.request("layout.set_crop", {
+      spread_id: Number(spreadId),
+      cell_index: Number(cellIndex),
+      crop,
+    }),
+  );
+  ipcMain.handle("layout:recompose-spread", (_event, { spreadId }) =>
+    bridge.request("layout.recompose_spread", { spread_id: Number(spreadId) }),
+  );
   ipcMain.handle("database:job-status", () => jobState);
   ipcMain.handle("database:job-cancel", () => {
     if (activeJob) {

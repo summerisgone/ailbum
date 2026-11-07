@@ -83,13 +83,89 @@ export type DatabaseSummary = {
 
 export type DatabaseJob = {
   status: "idle" | "running" | "complete" | "error" | "cancelled";
-  kind?: "index" | "analyze";
+  kind?: "index" | "analyze" | "layout";
   stage?: string;
   detail?: string;
   current?: number | null;
   total?: number | null;
   error?: string | null;
   result?: unknown;
+};
+
+export type LayoutParams = {
+  orientation: "vertical" | "horizontal";
+  spread_count: number;
+  min_photos: number;
+  max_photos: number;
+  assistant?: "auto" | "off";
+};
+
+export type LayoutPreflight = {
+  pool_count: number;
+  unit_count: number;
+  story_count: number;
+  min_needed: number;
+  max_used: number;
+  allocation: { story_ids: number[]; title: string; spreads: number; units: number }[];
+  errors: string[];
+  warnings: string[];
+};
+
+export type LayoutTemplateInfo = {
+  id: string;
+  photo_count: number;
+  cells: { index: number; x: number; y: number; w: number; h: number }[];
+};
+
+export type LayoutAlternative = {
+  image_id: number;
+  fit: number;
+  warnings: string[];
+  in_selection: boolean;
+};
+
+export type LayoutPlacement = {
+  image_id: number;
+  crop: { x: number; y: number; w: number; h: number };
+  fit: number;
+  warnings: string[];
+  replaced_image_id: number | null;
+};
+
+export type LayoutCell = {
+  index: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  crosses_spine: boolean;
+  placement: LayoutPlacement | null;
+};
+
+export type LayoutSpread = {
+  id: number;
+  position: number;
+  template_id: string;
+  story_ids: number[];
+  story_title: string;
+  warnings: string[];
+  assistant_reason: string | null;
+  cells: LayoutCell[];
+};
+
+export type Layout = {
+  id: number;
+  run_id: string;
+  orientation: "vertical" | "horizontal";
+  spread_count: number;
+  min_photos: number;
+  max_photos: number;
+  stale: boolean;
+  assistant_model: string | null;
+  warnings: string[];
+  unplaced: { image_id: number; reason: string }[];
+  format: { spread_w_mm: number; spread_h_mm: number; bleed_mm: number; safe_mm: number };
+  spreads: LayoutSpread[];
 };
 
 export type FavoriteResult = {
@@ -168,6 +244,20 @@ declare global {
       getDatabaseJob(): Promise<DatabaseJob>;
       cancelDatabaseJob(): Promise<DatabaseJob>;
       onDatabaseJob(listener: (job: DatabaseJob) => void): () => void;
+      layoutPreflight(runId: string, params: LayoutParams): Promise<LayoutPreflight>;
+      getLayout(runId: string): Promise<Layout | null>;
+      getLayoutTemplates(orientation: string, photoCount: number): Promise<LayoutTemplateInfo[]>;
+      startLayout(runId: string, params: LayoutParams): Promise<DatabaseJob>;
+      getLayoutAlternatives(spreadId: number, cellIndex: number): Promise<LayoutAlternative[]>;
+      setLayoutPhoto(spreadId: number, cellIndex: number, imageId: number): Promise<Layout>;
+      swapLayoutCells(spreadId: number, cellA: number, cellB: number): Promise<Layout>;
+      setLayoutTemplate(spreadId: number, templateId: string): Promise<Layout>;
+      setLayoutCrop(
+        spreadId: number,
+        cellIndex: number,
+        crop: { x: number; y: number; w: number; h: number },
+      ): Promise<Layout>;
+      recomposeLayoutSpread(spreadId: number): Promise<Layout>;
       mediaUrl(imageId: number): string;
       originalUrl(imageId: number): string;
       faceUrl(faceId: number): string;

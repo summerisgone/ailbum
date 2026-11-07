@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from ailbum.catalog import index_library
+from ailbum.layout import service
+from ailbum.layout.types import LayoutParams
 from ailbum.models import PipelineConfig
 from ailbum.pipeline import analyze_library
 
@@ -126,16 +128,60 @@ def run_analysis(
     return {"run_id": manifest["run_id"], "summary": manifest["summary"]}
 
 
-def main() -> None:
+def layout_params(raw: str) -> LayoutParams:
+    values = json.loads(raw)
+    if not isinstance(values, dict):
+        raise TypeError("Параметры раскладки должны быть JSON-объектом")
+    return LayoutParams(
+        str(values["orientation"]),
+        int(values["spread_count"]),
+        int(values["min_photos"]),
+        int(values["max_photos"]),
+        str(values.get("assistant", "auto")),
+    )
+
+
+def run_layout(
+    database: Path, run_id: str, raw_params: str, models_dir: Path | None = None
+) -> dict[str, object]:
+    params = layout_params(raw_params)
+    return service.generate(
+        database,
+        run_id,
+        params,
+        models_dir,
+        lambda stage, detail, current, total: emit(
+            {
+                "type": "progress",
+                "stage": stage,
+                "detail": detail,
+                "current": current,
+                "total": total,
+            }
+        ),
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Ailbum Electron background job")
-    parser.add_argument("kind", choices=("index", "analyze"))
+    parser.add_argument("kind", choices=("index", "analyze", "layout"))
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--source", type=Path, action="append")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--models-dir", type=Path)
-    args = parser.parse_args()
+    parser.add_argument("--run-id")
+    parser.add_argument("--params")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
     try:
-        if args.kind == "index":
+        if args.kind == "layout":
+            if not args.run_id or args.params is None:
+                raise ValueError("Не указаны запуск и параметры раскладки")
+            result = run_layout(args.database, args.run_id, args.params, args.models_dir)
+        elif args.kind == "index":
             if not args.source:
                 raise ValueError("Не выбраны папки с фотографиями")
             result = run_index(args.database, args.source)

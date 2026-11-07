@@ -31,6 +31,23 @@ contextBridge.exposeInMainWorld("ailbum", {
     ipcRenderer.on("database:job-progress", handler);
     return () => ipcRenderer.removeListener("database:job-progress", handler);
   },
+  layoutPreflight: (runId, params) => ipcRenderer.invoke("layout:preflight", { runId, params }),
+  getLayout: (runId) => ipcRenderer.invoke("layout:get", { runId }),
+  getLayoutTemplates: (orientation, photoCount) =>
+    ipcRenderer.invoke("layout:templates", { orientation, photoCount }),
+  startLayout: (runId, params) => ipcRenderer.invoke("layout:start", { runId, params }),
+  getLayoutAlternatives: (spreadId, cellIndex) =>
+    ipcRenderer.invoke("layout:alternatives", { spreadId, cellIndex }),
+  setLayoutPhoto: (spreadId, cellIndex, imageId) =>
+    ipcRenderer.invoke("layout:set-photo", { spreadId, cellIndex, imageId }),
+  swapLayoutCells: (spreadId, cellA, cellB) =>
+    ipcRenderer.invoke("layout:swap-cells", { spreadId, cellA, cellB }),
+  setLayoutTemplate: (spreadId, templateId) =>
+    ipcRenderer.invoke("layout:set-template", { spreadId, templateId }),
+  setLayoutCrop: (spreadId, cellIndex, crop) =>
+    ipcRenderer.invoke("layout:set-crop", { spreadId, cellIndex, crop }),
+  recomposeLayoutSpread: (spreadId) =>
+    ipcRenderer.invoke("layout:recompose-spread", { spreadId }),
   mediaUrl: (imageId) => `ailbum-media://photo/${imageId}`,
   originalUrl: (imageId) => `ailbum-media://original/${imageId}`,
   faceUrl: (faceId) => `ailbum-media://face/${faceId}`,

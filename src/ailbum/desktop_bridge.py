@@ -24,6 +24,9 @@ from ailbum.database import (
     set_desktop_target,
     set_face_person,
 )
+from ailbum.layout import editing, service, store
+from ailbum.layout.templates import format_for, templates_for
+from ailbum.layout.types import LayoutParams
 
 
 def _face_thumbnail(database: Path, face_id: int, size: int = 240) -> dict[str, str]:
@@ -57,6 +60,70 @@ def _face_thumbnail(database: Path, face_id: int, size: int = 240) -> dict[str, 
         output = BytesIO()
         tile.save(output, format="JPEG", quality=86, optimize=True)
     return {"mime_type": "image/jpeg", "base64": base64.b64encode(output.getvalue()).decode()}
+
+
+def _layout_params(payload: dict[str, Any]) -> LayoutParams:
+    return LayoutParams(
+        str(payload["orientation"]),
+        int(payload["spread_count"]),
+        int(payload["min_photos"]),
+        int(payload["max_photos"]),
+        str(payload.get("assistant", "auto")),
+    )
+
+
+def _layout_templates(orientation: str, photo_count: int | None) -> list[dict[str, Any]]:
+    fmt = format_for(orientation)
+    return [
+        {
+            "id": template.id,
+            "photo_count": template.photo_count,
+            "cells": [
+                {
+                    "index": cell.index,
+                    "x": cell.rect.x / fmt.spread_w_mm,
+                    "y": cell.rect.y / fmt.spread_h_mm,
+                    "w": cell.rect.w / fmt.spread_w_mm,
+                    "h": cell.rect.h / fmt.spread_h_mm,
+                }
+                for cell in template.cells
+            ],
+        }
+        for template in templates_for(orientation, photo_count)
+    ]
+
+
+def _dispatch_layout(database: Path, action: str, payload: dict[str, Any]) -> object:
+    if action == "layout.preflight":
+        return service.preflight(database, str(payload["run_id"]), _layout_params(payload))
+    if action == "layout.get":
+        with connect(database) as connection:
+            return store.load_layout(connection, str(payload["run_id"]))
+    if action == "layout.templates":
+        count = payload.get("photo_count")
+        return _layout_templates(
+            str(payload["orientation"]), int(count) if count is not None else None
+        )
+    spread_id = int(payload["spread_id"])
+    if action == "layout.alternatives":
+        return editing.alternatives(database, spread_id, int(payload["cell_index"]))
+    if action == "layout.set_photo":
+        return editing.set_photo(
+            database, spread_id, int(payload["cell_index"]), int(payload["image_id"])
+        )
+    if action == "layout.swap_cells":
+        return editing.swap_cells(
+            database, spread_id, int(payload["cell_a"]), int(payload["cell_b"])
+        )
+    if action == "layout.set_template":
+        return editing.set_template(database, spread_id, str(payload["template_id"]))
+    if action == "layout.set_crop":
+        return editing.set_crop(
+            database, spread_id, int(payload["cell_index"]), dict(payload["crop"])
+        )
+    if action == "layout.recompose_spread":
+        return editing.recompose_spread(database, spread_id)
+    raise ValueError(f"Unknown desktop action: {action}")
 
 
 def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
@@ -101,6 +168,8 @@ def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
         )
     if action == "face.thumbnail":
         return _face_thumbnail(database, int(payload["face_id"]))
+    if action.startswith("layout."):
+        return _dispatch_layout(database, action, payload)
     if action == "ping":
         return {"ok": True}
     raise ValueError(f"Unknown desktop action: {action}")
