@@ -97,6 +97,6 @@ import Foundation
         print("saliency 800x533 seconds:", dt)
         #expect(risk.isFinite && risk >= 0 && risk <= 1)
         #expect(subject != nil)
-        #expect(dt < 30, "debug seconds \(dt)")  // release ~0.12 s; debug ~12 s
+        #expect(dt < 2, "debug seconds \(dt)")
     }
 }
