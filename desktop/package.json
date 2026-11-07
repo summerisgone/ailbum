@@ -1,6 +1,6 @@
 {
   "name": "ailbum-desktop",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Fast local photo selection UI for Ailbum",
   "author": "Ailbum contributors",
