@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ailbum.database import connect
-from ailbum.layout.composer import best_variants
+from ailbum.layout.composer import SELECTED_BONUS, best_variants
 from ailbum.layout.crop import evaluate_crop, solve_crop
 from ailbum.layout.facts import load_pool
 from ailbum.layout.store import load_layout
@@ -24,8 +24,13 @@ def alternatives(database: Path, spread_id: int, cell_index: int) -> list[dict]:
     with connect(database) as connection:
         spread = _spread(connection, spread_id)
         cell = _cell(spread, cell_index)
+        stories = set(json.loads(connection.execute(
+            "SELECT story_ids_json FROM layout_spreads WHERE id = ?",
+            (spread_id,)).fetchone()[0]))
+        pool = list(_pool(connection, spread["run_id"]).values())
+        scoped = [p for p in pool if p.story_id in stories]
         found = []
-        for photo in _pool(connection, spread["run_id"]).values():
+        for photo in scoped or pool:
             result = solve_crop(photo.aspect, photo.regions, cell)
             found.append({
                 "image_id": photo.image_id,
@@ -33,7 +38,8 @@ def alternatives(database: Path, spread_id: int, cell_index: int) -> list[dict]:
                 "warnings": list(result.violations),
                 "in_selection": bool(photo.selected),
             })
-    found.sort(key=lambda item: (-item["fit"], item["image_id"]))
+    found.sort(key=lambda item: (
+        -(item["fit"] + (SELECTED_BONUS if item["in_selection"] else 0.0)), item["image_id"]))
     return found[:ALTERNATIVES_LIMIT]
 
 

@@ -24,6 +24,7 @@ class Photo:
     selected: bool = True
     regions: tuple = ()
     rank: float = 0.5
+    story_id: int | None = None
 
 
 POOL = [
@@ -225,7 +226,7 @@ def test_set_crop_cutting_face_warns_not_rejects(db, api):
 
 
 def test_alternatives_sorted_by_fit_and_capped_24(db, api, monkeypatch):
-    many = [Photo(100 + i, 0.5 + i * 0.05, f"image:{100 + i}", selected=i % 2 == 0)
+    many = [Photo(100 + i, 0.5 + i * 0.05, f"image:{100 + i}", selected=True)
             for i in range(30)]
     if os.environ.get("SUPERLITE_REAL") != "1":
         monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: POOL + many)
@@ -243,6 +244,23 @@ def test_alternatives_ties_break_by_image_id(db, api, monkeypatch):
     twins = [Photo(i, 1.0, f"image:{i}") for i in (9, 7, 8)]
     monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: twins)
     assert [a["image_id"] for a in editing.alternatives(db, 5, 0)] == [7, 8, 9]
+
+
+def test_alternatives_limited_to_spread_stories(db, api, monkeypatch):
+    pool = [Photo(10, 1.0, "image:10", story_id=1),
+            Photo(11, 1.0, "image:11", story_id=2),
+            Photo(12, 1.0, "image:12", story_id=None)]
+    monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: pool)
+    assert [a["image_id"] for a in editing.alternatives(db, 5, 0)] == [10]
+
+
+def test_alternatives_selected_ranked_before_equal_sibling(db, api, monkeypatch):
+    pool = [Photo(10, 1.0, "image:10", selected=False, story_id=1),
+            Photo(11, 1.0, "image:11", selected=True, story_id=1)]
+    monkeypatch.setattr(editing, "load_pool", lambda c, r, d, progress=None: pool)
+    result = editing.alternatives(db, 5, 0)
+    assert [a["image_id"] for a in result] == [11, 10]
+    assert result[0]["fit"] == result[1]["fit"]
 
 
 def test_swap_recomputes_both_crops(db, api):
