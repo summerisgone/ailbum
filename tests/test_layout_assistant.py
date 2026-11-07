@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import importlib
-import os
-import sys
-import types
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -23,21 +19,6 @@ class R:
 
 
 @dataclass
-class FakeCell:
-    index: int
-    rect: R
-    safe: R
-    spine_band: R | None = None
-
-
-@dataclass
-class FakeTemplate:
-    id: str
-    photo_count: int
-    cells: list
-
-
-@dataclass
 class FakePlacement:
     cell_index: int
     image_id: int
@@ -52,33 +33,6 @@ class FakeDraft:
     score: float = 0.0
     warnings: tuple = ()
     alternatives: tuple = ()
-
-
-@dataclass
-class FakeFormat:
-    spread_w_mm: float = 426.0
-    spread_h_mm: float = 303.0
-
-
-@pytest.fixture(autouse=True)
-def templates(monkeypatch):
-    if os.environ.get("SUPERLITE_REAL") == "1":
-        return
-    cells = [
-        FakeCell(0, R(0, 0, 213, 303), R(6, 6, 201, 291)),
-        FakeCell(1, R(213, 0, 213, 303), R(213, 6, 201, 291)),
-    ]
-    fake = types.ModuleType("ailbum.layout.templates")
-    fake.format_for = lambda orientation: FakeFormat()
-    fake.templates_for = lambda orientation, photo_count=None: [
-        FakeTemplate("pages", 2, cells)
-    ]
-    monkeypatch.setitem(sys.modules, "ailbum.layout.templates", fake)
-    try:
-        package = importlib.import_module("ailbum.layout")
-        monkeypatch.setattr(package, "templates", fake, raising=False)
-    except ImportError:
-        pass
 
 
 def draft(*image_ids):

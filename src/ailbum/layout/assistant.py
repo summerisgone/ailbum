@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import importlib
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -11,6 +10,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from ailbum.layout.templates import format_for, templates_for
 from ailbum.story_naming import _request_json
 
 LABELS = "ABCDEF"
@@ -114,9 +114,8 @@ def render_variants(
     orientation: str,
     max_side: int = 896,
 ) -> bytes:
-    templates = importlib.import_module("ailbum.layout.templates")
-    fmt = templates.format_for(orientation)
-    by_id = {t.id: t for t in templates.templates_for(orientation)}
+    fmt = format_for(orientation)
+    by_id = {t.id: t for t in templates_for(orientation)}
     width = 1200
     height = max(1, round(width * fmt.spread_h_mm / fmt.spread_w_mm))
     scale = width / fmt.spread_w_mm
