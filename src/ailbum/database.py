@@ -18,7 +18,7 @@ from ailbum.models import PersonRecord, PhotoRecord, StoryRecord
 from ailbum.stories import STORY_ALGORITHM_VERSION, StoryPhoto, detect_stories
 from ailbum.story_naming import StoryNamer
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -183,6 +183,55 @@ CREATE TABLE IF NOT EXISTS desktop_run_settings (
     selection_initialized INTEGER NOT NULL DEFAULT 0
         CHECK (selection_initialized IN (0, 1)),
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS image_object_scans (
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    detector_model TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    objects_json TEXT NOT NULL,
+    scanned_at TEXT NOT NULL,
+    PRIMARY KEY (image_id, detector_model)
+);
+
+CREATE TABLE IF NOT EXISTS layouts (
+    id INTEGER PRIMARY KEY,
+    run_id TEXT NOT NULL UNIQUE REFERENCES analysis_runs(id) ON DELETE CASCADE,
+    orientation TEXT NOT NULL,
+    spread_count INTEGER NOT NULL,
+    min_photos INTEGER NOT NULL,
+    max_photos INTEGER NOT NULL,
+    selection_hash TEXT NOT NULL,
+    assistant_model TEXT,
+    unplaced_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS layout_spreads (
+    id INTEGER PRIMARY KEY,
+    layout_id INTEGER NOT NULL REFERENCES layouts(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    template_id TEXT NOT NULL,
+    story_ids_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    assistant_reason TEXT,
+    UNIQUE (layout_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS layout_placements (
+    spread_id INTEGER NOT NULL REFERENCES layout_spreads(id) ON DELETE CASCADE,
+    cell_index INTEGER NOT NULL,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    crop_x REAL NOT NULL,
+    crop_y REAL NOT NULL,
+    crop_w REAL NOT NULL,
+    crop_h REAL NOT NULL,
+    fit REAL NOT NULL,
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    replaced_image_id INTEGER,
+    PRIMARY KEY (spread_id, cell_index)
 );
 """
 
