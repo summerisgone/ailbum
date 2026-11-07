@@ -13,12 +13,13 @@ from typing import Any
 
 import numpy as np
 
+from ailbum.migrations import migrate_v12
 from ailbum.metadata import ImageMetadata, _filename_taken_at
 from ailbum.models import PersonRecord, PhotoRecord, StoryRecord
 from ailbum.stories import STORY_ALGORITHM_VERSION, StoryPhoto, detect_stories
 from ailbum.story_naming import StoryNamer
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS images (
     container_metadata_json TEXT NOT NULL,
     extraction_error TEXT,
     indexed_at TEXT NOT NULL,
-    missing INTEGER NOT NULL DEFAULT 0 CHECK (missing IN (0, 1))
+    availability TEXT NOT NULL DEFAULT 'present'
+        CHECK (availability IN ('present', 'missing', 'archived'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_images_sha256 ON images(sha256);
@@ -73,7 +75,7 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 
 CREATE TABLE IF NOT EXISTS photo_analysis (
     run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
-    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE RESTRICT,
     photo_id TEXT NOT NULL,
     sharpness REAL NOT NULL,
     exposure REAL NOT NULL,
@@ -137,7 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_people_model ON people(embedding_model);
 CREATE TABLE IF NOT EXISTS faces (
     id INTEGER PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
-    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE RESTRICT,
     face_id TEXT NOT NULL,
     face_index INTEGER NOT NULL,
     bbox_x INTEGER NOT NULL,
@@ -166,23 +168,69 @@ CREATE INDEX IF NOT EXISTS idx_faces_person ON faces(run_id, person_cluster);
 CREATE INDEX IF NOT EXISTS idx_faces_person_id ON faces(person_id);
 CREATE INDEX IF NOT EXISTS idx_faces_image ON faces(image_id);
 
-CREATE TABLE IF NOT EXISTS photo_selections (
-    run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
-    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
-    selected_at TEXT NOT NULL,
-    position INTEGER NOT NULL,
-    PRIMARY KEY (run_id, image_id)
+CREATE TABLE IF NOT EXISTS albums (
+    id INTEGER PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'photobook_demo'
+        CHECK (purpose IN ('photobook_demo', 'print')),
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'ordered', 'archived')),
+    target_count INTEGER NOT NULL DEFAULT 24 CHECK (target_count > 0),
+    run_id TEXT REFERENCES analysis_runs(id) ON DELETE SET NULL,
+    ordered_at TEXT,
+    archived_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_photo_selections_order
-ON photo_selections(run_id, position);
+CREATE TABLE IF NOT EXISTS album_sources (
+    album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    source_root TEXT NOT NULL,
+    PRIMARY KEY (album_id, source_root)
+);
 
-CREATE TABLE IF NOT EXISTS desktop_run_settings (
-    run_id TEXT PRIMARY KEY REFERENCES analysis_runs(id) ON DELETE CASCADE,
-    target_count INTEGER NOT NULL DEFAULT 24 CHECK (target_count > 0),
-    selection_initialized INTEGER NOT NULL DEFAULT 0
-        CHECK (selection_initialized IN (0, 1)),
-    updated_at TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS album_photos (
+    album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE RESTRICT,
+    position INTEGER NOT NULL,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (album_id, image_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_album_photos_order ON album_photos(album_id, position);
+
+CREATE TABLE IF NOT EXISTS album_exports (
+    id INTEGER PRIMARY KEY,
+    album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    layout_id INTEGER,
+    selection_hash TEXT NOT NULL,
+    folder TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    missing_json TEXT NOT NULL DEFAULT '[]',
+    exported_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS selection_events (
+    id INTEGER PRIMARY KEY,
+    album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES analysis_runs(id) ON DELETE SET NULL,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE RESTRICT,
+    action TEXT NOT NULL CHECK (action IN ('add', 'remove', 'seed')),
+    source TEXT NOT NULL CHECK (source IN ('auto', 'manual', 'backfill')),
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_selection_events_album ON selection_events(album_id, id);
+
+CREATE TABLE IF NOT EXISTS ranking_models (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('pairwise', 'pointwise')),
+    feature_version INTEGER NOT NULL,
+    model_json TEXT NOT NULL,
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1)),
+    trained_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS image_object_scans (
@@ -196,7 +244,9 @@ CREATE TABLE IF NOT EXISTS image_object_scans (
 
 CREATE TABLE IF NOT EXISTS layouts (
     id INTEGER PRIMARY KEY,
-    run_id TEXT NOT NULL UNIQUE REFERENCES analysis_runs(id) ON DELETE CASCADE,
+    album_id INTEGER NOT NULL UNIQUE REFERENCES albums(id) ON DELETE CASCADE,
+    run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
+    prompt TEXT,
     orientation TEXT NOT NULL,
     spread_count INTEGER NOT NULL,
     min_photos INTEGER NOT NULL,
@@ -223,7 +273,7 @@ CREATE TABLE IF NOT EXISTS layout_spreads (
 CREATE TABLE IF NOT EXISTS layout_placements (
     spread_id INTEGER NOT NULL REFERENCES layout_spreads(id) ON DELETE CASCADE,
     cell_index INTEGER NOT NULL,
-    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+    image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE RESTRICT,
     crop_x REAL NOT NULL,
     crop_y REAL NOT NULL,
     crop_w REAL NOT NULL,
@@ -245,6 +295,11 @@ def connect(database: Path) -> Iterator[sqlite3.Connection]:
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(SCHEMA)
     _migrate_schema(connection)
+    if any(row[1] == "missing" for row in connection.execute("PRAGMA table_info(images)")):
+        migrate_v12(connection)
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_images_availability ON images(availability)"
+    )
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:
         yield connection
@@ -261,13 +316,13 @@ def index_metadata(
 ) -> dict[str, int]:
     source_root = str((source if source.is_dir() else source.parent).resolve())
     with connect(database) as connection:
-        connection.execute("UPDATE images SET missing = 1 WHERE source_root = ?", (source_root,))
+        connection.execute("UPDATE images SET availability = 'missing' WHERE source_root = ?", (source_root,))
         for item in metadata:
             _upsert_image(connection, item)
         counts = connection.execute(
             """
             SELECT COUNT(*) AS images,
-                   SUM(CASE WHEN missing = 0 THEN 1 ELSE 0 END) AS available,
+                   SUM(CASE WHEN availability = 'present' THEN 1 ELSE 0 END) AS available,
                    SUM(CASE WHEN extraction_error IS NOT NULL THEN 1 ELSE 0 END) AS errors
             FROM images
             """
@@ -289,7 +344,7 @@ def save_analysis(
     run_id = str(manifest["run_id"])
     with connect(database) as connection:
         source_root = str((source if source.is_dir() else source.parent).resolve())
-        connection.execute("UPDATE images SET missing = 1 WHERE source_root = ?", (source_root,))
+        connection.execute("UPDATE images SET availability = 'missing' WHERE source_root = ?", (source_root,))
         image_ids: dict[str, int] = {}
         for item in metadata:
             image_ids[item.path] = _upsert_image(connection, item)
@@ -581,7 +636,7 @@ def _ensure_stories(connection: sqlite3.Connection, run_id: str) -> None:
                i.gps_latitude, i.gps_longitude, i.path
         FROM photo_analysis AS pa
         JOIN images AS i ON i.id = pa.image_id
-        WHERE pa.run_id = ? AND i.missing = 0
+        WHERE pa.run_id = ? AND i.availability = 'present'
         ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
         """,
         (run_id,),
@@ -714,7 +769,7 @@ def database_summary(database: Path) -> dict[str, Any]:
         image_counts = connection.execute(
             """
             SELECT COUNT(*) AS images,
-                   SUM(CASE WHEN missing = 0 THEN 1 ELSE 0 END) AS available,
+                   SUM(CASE WHEN availability = 'present' THEN 1 ELSE 0 END) AS available,
                    COUNT(DISTINCT sha256) AS unique_files,
                    SUM(file_size_bytes) AS bytes,
                    SUM(CASE WHEN gps_latitude IS NOT NULL THEN 1 ELSE 0 END) AS with_gps,
@@ -750,7 +805,7 @@ def list_catalog_images(database: Path, limit: int = 100) -> list[dict[str, Any]
         rows = connection.execute(
             """
             SELECT id, path, taken_at, width, height, camera_make, camera_model,
-                   gps_latitude, gps_longitude, file_size_bytes, missing
+                   gps_latitude, gps_longitude, file_size_bytes, availability
             FROM images
             ORDER BY COALESCE(taken_at, modified_at), path
             LIMIT ?
@@ -1085,7 +1140,7 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
                        0 AS closed_eyes_count, 0 AS smiling_faces_count,
                        NULL AS people_names, 0 AS favorite, NULL AS selection_position
                 FROM images AS i
-                WHERE i.missing = 0
+                WHERE i.availability = 'present'
                 ORDER BY COALESCE(i.taken_at, i.modified_at), i.path
                 """
             ).fetchall()
@@ -1134,7 +1189,7 @@ def get_desktop_library(database: Path, run_id: str | None = None) -> dict[str, 
                 LEFT JOIN face_summary AS fs ON fs.image_id = i.id
                 LEFT JOIN photo_selections AS ps
                     ON ps.run_id = pa.run_id AND ps.image_id = i.id
-                WHERE pa.run_id = ? AND i.missing = 0
+                WHERE pa.run_id = ? AND i.availability = 'present'
                 ORDER BY pa.story_id, COALESCE(i.taken_at, i.modified_at), i.path
                 """,
                 (run["id"], run["id"]),
@@ -1261,7 +1316,7 @@ def _upsert_image(connection: sqlite3.Connection, item: ImageMetadata) -> int:
             "exif_json": _json(values.pop("exif")),
             "container_metadata_json": _json(values.pop("container_metadata")),
             "indexed_at": utc_now(),
-            "missing": 0,
+            "availability": "present",
         }
     )
     columns = list(values)
@@ -1354,7 +1409,7 @@ def _initialize_desktop_selection(connection: sqlite3.Connection, run_id: str) -
                    )
             FROM photo_analysis AS pa
             JOIN images AS i ON i.id = pa.image_id
-            WHERE pa.run_id = ? AND pa.selected = 1 AND i.missing = 0
+            WHERE pa.run_id = ? AND pa.selected = 1 AND i.availability = 'present'
             """,
             (utc_now(), run_id),
         )
@@ -1452,7 +1507,7 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
     settings_columns = {
         str(row[1]) for row in connection.execute("PRAGMA table_info(desktop_run_settings)")
     }
-    if "selection_initialized" not in settings_columns:
+    if settings_columns and "selection_initialized" not in settings_columns:
         connection.execute(
             """
             ALTER TABLE desktop_run_settings
