@@ -14,6 +14,7 @@ type Props = {
   onError(message: string): void;
   onOpenPhotos(storyId: number | null): void;
   onSetFavorite(imageId: number, favorite: boolean): Promise<void>;
+  readOnly?: boolean;
 };
 
 type Viewer = { title: string; items: LayoutAlternative[]; startId: number; source: "similar" | "candidates" };
@@ -21,10 +22,11 @@ type Viewer = { title: string; items: LayoutAlternative[]; startId: number; sour
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const ZOOM_STEP = 1.25;
 
-export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhotos, onSetFavorite }: Props) {
+export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhotos, onSetFavorite, readOnly = false }: Props) {
   const [selected, setSelected] = useState<{ spreadId: number; cell: number } | null>(null);
   const [guides, setGuides] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [working, setBusy] = useState(false);
+  const busy = working || readOnly;
   const [alternatives, setAlternatives] = useState<LayoutAlternative[]>([]);
   const [similar, setSimilar] = useState<LayoutAlternative[]>([]);
   const [variants, setVariants] = useState<LayoutVariant[]>([]);
@@ -106,7 +108,7 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
     setBusy(true);
     try {
       await onSetFavorite(imageId, favorite);
-      const next = await window.ailbum.getLayout(layout.run_id);
+      const next = await window.ailbum.getLayout(layout.album_id);
       if (next) onChange(next);
       setVersion((value) => value + 1);
     } catch (error) {
@@ -137,10 +139,10 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
   }
 
   async function exportOriginals() {
-    if (busy) return;
+    if (working) return;
     setBusy(true);
     try {
-      const result = await window.ailbum.exportLayout(layout.run_id);
+      const result = await window.ailbum.exportLayout(layout.album_id);
       if (result) {
         setNotice(
           `Сохранено фото: ${result.count} в ${result.folder}` +
@@ -170,7 +172,7 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
         {layout.stale && (
           <div className="layout-banner">
             <span>Выбор изменился, пересоздать?</span>
-            <button type="button" onClick={onRecreate}>
+            <button type="button" disabled={readOnly} onClick={onRecreate}>
               Пересоздать
             </button>
           </div>
@@ -194,14 +196,14 @@ export function LayoutEditor({ layout, onChange, onRecreate, onError, onOpenPhot
             <input type="checkbox" checked={guides} onChange={(event) => setGuides(event.target.checked)} />
             Направляющие
           </label>
-          <button type="button" onClick={onRecreate}>Новая раскладка</button>
+          <button type="button" disabled={readOnly} onClick={onRecreate}>Новая раскладка</button>
           <button type="button" onClick={() => setPreview("book")}>
             <BookOpen size={13} /> Альбом
           </button>
           <button type="button" onClick={() => setPreview("actual")} title="Разворот в натуральную величину">
             <Ruler size={13} /> 1:1
           </button>
-          <button type="button" disabled={busy} onClick={exportOriginals}>
+          <button type="button" disabled={working} onClick={exportOriginals}>
             <FolderDown size={13} /> Экспорт оригиналов
           </button>
           <span className="toolbar-hint">Колесо или щипок над выбранной ячейкой - масштаб, перетаскивание - кадрирование</span>
