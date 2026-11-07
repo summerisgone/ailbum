@@ -50,6 +50,26 @@ SQLite + analysis.json + selection.csv + desktop UI
 - `desktop/` — изолированный Electron renderer; получает данные и локальные
   изображения только через preload IPC.
 
+## Раскладка альбома
+
+Пакет `src/ailbum/layout/` строит развороты из выбранных фото и похожих кадров.
+Вычисления детерминированы: повторный запуск на тех же данных даёт тот же результат.
+
+- `types.py`, `templates.py` - общие датаклассы, форматы страницы и каталог шаблонов.
+- `crop.py` - подбор кропа ячейки с защитой лиц и корешка.
+- `allocation.py` - распределение разворотов по сюжетам.
+- `facts.py` - пул кадров и защищаемые области из SQLite; кэш детектора в `image_object_scans`.
+- `composer.py` - выбор кадров, шаблона и ячеек для разворота.
+- `assistant.py` - превью вариантов и необязательный выбор через LM Studio.
+- `store.py` - таблицы `layouts`, `layout_spreads`, `layout_placements` и JSON-контракт.
+- `service.py` - `preflight` (без открытия изображений) и `generate`.
+- `editing.py` - ручные правки: фото, обмен ячеек, шаблон, кроп, пересборка.
+- `cv/objects.py` - детектор объектов YOLOX на OpenCV DNN.
+
+Граница с Electron: `desktop_bridge.py` обслуживает действия `layout.*`, `desktop_job.py`
+запускает `generate` отдельным процессом. Флаг `stale` вычисляется при чтении раскладки
+по хэшу выбранных кадров.
+
 ## Desktop и граница доверия
 
 Renderer работает с `contextIsolation`, без Node.js и прямого доступа к диску.
