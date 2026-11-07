@@ -6,13 +6,20 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from ailbum import proxies
 from ailbum.database import connect
 from ailbum.layout import preferences
 from ailbum.layout.allocation import StoryGroup, allocate_spreads
 from ailbum.layout.assistant import LayoutAssistant
 from ailbum.layout.composer import compose_group
 from ailbum.layout.facts import load_pool
-from ailbum.layout.store import load_layout, save_layout, selection_hash
+from ailbum.layout.store import (
+    album_run,
+    load_layout,
+    require_draft,
+    save_layout,
+    selection_hash,
+)
 from ailbum.layout.types import LayoutParams
 
 Progress = Callable[[str, str, int | None, int | None], None]
@@ -23,16 +30,16 @@ DETECTOR_WARNING = (
 ASSISTANT_WARNING = "AI-редактор недоступен: использован выбор движка"
 
 
-def preflight(database: Path, run_id: str, params: LayoutParams) -> dict[str, Any]:
+def preflight(database: Path, album_id: int, params: LayoutParams) -> dict[str, Any]:
     with connect(database) as connection:
-        pool = load_pool(connection, run_id, None)
-        groups, _ = _group_pool(connection, run_id, pool)
+        pool = load_pool(connection, album_id, None)
+        groups, _ = _group_pool(connection, album_run(connection, album_id), pool)
     return _summary(params, len(pool), groups)
 
 
 def generate(
     database: Path,
-    run_id: str,
+    album_id: int,
     params: LayoutParams,
     models_dir: Path | None,
     progress: Progress | None = None,
@@ -40,13 +47,15 @@ def generate(
     report = progress or (lambda *_: None)
     warnings: list[str] = []
     with connect(database) as connection:
+        require_draft(connection, album_id)
+        run_id = album_run(connection, album_id)
         detector = _open_detector(models_dir)
         if detector is None:
             warnings.append(DETECTOR_WARNING)
         report("Анализ объектов", "Анализ объектов", 0, None)
         pool = load_pool(
             connection,
-            run_id,
+            album_id,
             detector,
             lambda done, total: report("Анализ объектов", "Анализ объектов", done, total),
         )
@@ -67,7 +76,7 @@ def generate(
         if params.assistant != "off" and assistant is None:
             warnings.append(ASSISTANT_WARNING)
 
-        paths = _image_paths(connection, [photo.image_id for photo in pool])
+        paths = _image_paths(database, connection, [photo.image_id for photo in pool])
         titles = {entry["story_id"]: entry["title"] for entry in groups}
         spreads: list[Any] = []
         unplaced: list[dict[str, Any]] = []
@@ -88,15 +97,16 @@ def generate(
 
         save_layout(
             connection,
+            album_id,
             run_id,
             params,
             spreads,
             unplaced,
             warnings,
-            selection_hash(connection, run_id),
+            selection_hash(connection, album_id),
             assistant_model if assistant is not None else None,
         )
-        layout = load_layout(connection, run_id)
+        layout = load_layout(connection, album_id)
     return layout or {}
 
 
@@ -277,15 +287,17 @@ def _open_assistant(
     return (assistant, model) if connected else (None, None)
 
 
-def _image_paths(connection: Any, image_ids: list[int]) -> dict[int, str]:
+def _image_paths(database: Path, connection: Any, image_ids: list[int]) -> dict[int, str]:
     paths: dict[int, str] = {}
     for start in range(0, len(image_ids), 500):
         chunk = image_ids[start : start + 500]
         marks = ",".join("?" * len(chunk))
         for row in connection.execute(
-            f"SELECT id, path FROM images WHERE id IN ({marks})", chunk
+            f"SELECT id, path, sha256, availability FROM images WHERE id IN ({marks})", chunk
         ):
-            paths[int(row["id"])] = str(row["path"])
+            source = proxies.image_source(database, dict(row))
+            if source is not None:
+                paths[int(row["id"])] = str(source)
     return paths
 
 

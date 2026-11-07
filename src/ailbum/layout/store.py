@@ -13,16 +13,34 @@ if TYPE_CHECKING:
     from ailbum.layout.types import LayoutParams
 
 
-def selection_hash(connection: sqlite3.Connection, run_id: str) -> str:
+def selection_hash(connection: sqlite3.Connection, album_id: int) -> str:
     rows = connection.execute(
-        "SELECT image_id FROM photo_selections WHERE run_id = ? ORDER BY image_id", (run_id,)
+        "SELECT image_id FROM album_photos WHERE album_id = ? ORDER BY image_id", (album_id,)
     )
     payload = ",".join(str(row[0]) for row in rows)
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 
+def album_run(connection: sqlite3.Connection, album_id: int) -> str:
+    row = connection.execute("SELECT run_id FROM albums WHERE id = ?", (album_id,)).fetchone()
+    if row is None:
+        raise ValueError("Альбом не найден")
+    if row[0] is None:
+        raise ValueError("У альбома нет анализа")
+    return str(row[0])
+
+
+def require_draft(connection: sqlite3.Connection, album_id: int) -> None:
+    row = connection.execute("SELECT status FROM albums WHERE id = ?", (album_id,)).fetchone()
+    if row is None:
+        raise ValueError("Альбом не найден")
+    if row[0] != "draft":
+        raise ValueError("Альбом заказан: изменения недоступны")
+
+
 def save_layout(
     connection: sqlite3.Connection,
+    album_id: int,
     run_id: str,
     params: LayoutParams,
     spreads: Sequence[SpreadDraft],
@@ -33,7 +51,7 @@ def save_layout(
 ) -> int:
     # Children are removed explicitly so replacement does not depend on PRAGMA foreign_keys.
     old = [
-        row[0] for row in connection.execute("SELECT id FROM layouts WHERE run_id = ?", (run_id,))
+        row[0] for row in connection.execute("SELECT id FROM layouts WHERE album_id = ?", (album_id,))
     ]
     for layout_id in old:
         spread_ids = [
@@ -50,11 +68,12 @@ def save_layout(
     cursor = connection.execute(
         """
         INSERT INTO layouts (
-            run_id, orientation, spread_count, min_photos, max_photos, selection_hash,
-            assistant_model, unplaced_json, warnings_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            album_id, run_id, orientation, spread_count, min_photos, max_photos, selection_hash,
+            assistant_model, unplaced_json, warnings_json, prompt, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            album_id,
             run_id,
             params.orientation,
             params.spread_count,
@@ -64,6 +83,7 @@ def save_layout(
             assistant_model,
             _dumps(unplaced),
             _dumps(warnings),
+            params.prompt,
             now,
             now,
         ),
@@ -110,12 +130,13 @@ def save_layout(
     return layout_id
 
 
-def load_layout(connection: sqlite3.Connection, run_id: str) -> dict | None:
+def load_layout(connection: sqlite3.Connection, album_id: int) -> dict | None:
     from ailbum.layout.templates import format_for, templates_for
 
-    layout = connection.execute("SELECT * FROM layouts WHERE run_id = ?", (run_id,)).fetchone()
+    layout = connection.execute("SELECT * FROM layouts WHERE album_id = ?", (album_id,)).fetchone()
     if layout is None:
         return None
+    run_id = layout["run_id"]
     orientation = layout["orientation"]
     fmt = format_for(orientation)
     templates = {template.id: template for template in templates_for(orientation)}
@@ -168,12 +189,14 @@ def load_layout(connection: sqlite3.Connection, run_id: str) -> dict | None:
         )
     return {
         "id": int(layout["id"]),
+        "album_id": album_id,
         "run_id": run_id,
+        "prompt": layout["prompt"] or "",
         "orientation": orientation,
         "spread_count": int(layout["spread_count"]),
         "min_photos": int(layout["min_photos"]),
         "max_photos": int(layout["max_photos"]),
-        "stale": layout["selection_hash"] != selection_hash(connection, run_id),
+        "stale": layout["selection_hash"] != selection_hash(connection, album_id),
         "assistant_model": layout["assistant_model"],
         "warnings": json.loads(layout["warnings_json"]),
         "unplaced": json.loads(layout["unplaced_json"]),

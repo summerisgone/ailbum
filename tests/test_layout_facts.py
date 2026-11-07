@@ -31,6 +31,10 @@ def conn(tmp_path: Path):
         connection.execute(
             "INSERT INTO analysis_runs VALUES ('r','s','o','t','t','dnn','{}','{}','completed')"
         )
+        connection.execute(
+            "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+            " VALUES (1, 'u1', 'А', 'r', 't', 't')"
+        )
         yield connection
 
 
@@ -72,7 +76,7 @@ def add_image(
     )
     if selected:
         conn.execute(
-            "INSERT INTO photo_selections VALUES ('r', ?, 't', ?)", (image_id, image_id)
+            "INSERT INTO album_photos VALUES (1, ?, ?, 't')", (image_id, image_id)
         )
     return path
 
@@ -136,7 +140,7 @@ def test_saliency_only_without_faces_and_objects():
 def test_rotated_exif_swaps_aspect(conn):
     add_image(conn, 1, width=4000, height=3000, orientation=6)
     add_image(conn, 2, width=4000, height=3000, orientation=1)
-    pool = {p.image_id: p for p in load_pool(conn, "r", None)}
+    pool = {p.image_id: p for p in load_pool(conn, 1, None)}
     assert pool[1].aspect == pytest.approx(0.75)
     assert pool[2].aspect == pytest.approx(4 / 3)
 
@@ -144,7 +148,7 @@ def test_rotated_exif_swaps_aspect(conn):
 def test_face_normalized_by_rotated_size(conn):
     add_image(conn, 1, width=4000, height=3000, orientation=6)
     add_face(conn, 1, (300, 600, 300, 300))
-    region = load_pool(conn, "r", None)[0].regions[0]
+    region = load_pool(conn, 1, None)[0].regions[0]
     # rotated frame is 3000 wide, 4000 high; raw bbox x=0.1, y=0.15, w=0.1, h=0.075
     assert region.bbox.x == pytest.approx(0.1 - 0.1 * 0.2)
     assert region.bbox.y == pytest.approx(0.15 - 0.075 * 0.35)
@@ -154,13 +158,13 @@ def test_face_normalized_by_rotated_size(conn):
 def test_missing_file_excluded(conn):
     add_image(conn, 1, exists=False)
     add_image(conn, 2)
-    assert [p.image_id for p in load_pool(conn, "r", None)] == [2]
+    assert [p.image_id for p in load_pool(conn, 1, None)] == [2]
 
 
 def test_unit_keys_and_story(conn):
     add_image(conn, 1, cluster=3, story_id=7)
     add_image(conn, 2)
-    pool = {p.image_id: p for p in load_pool(conn, "r", None)}
+    pool = {p.image_id: p for p in load_pool(conn, 1, None)}
     assert pool[1].unit_key == "cluster:3" and pool[1].story_id == 7
     assert pool[1].taken_at == "2026-01-01T10:00:01"
     assert pool[2].unit_key == "image:2" and pool[2].story_id is None
@@ -170,7 +174,7 @@ def test_unit_keys_and_story(conn):
 def test_unselected_sibling_in_pool(conn):
     add_image(conn, 1, cluster=3)
     add_image(conn, 2, cluster=3, selected=False)
-    pool = {p.image_id: p for p in load_pool(conn, "r", None)}
+    pool = {p.image_id: p for p in load_pool(conn, 1, None)}
     assert set(pool) == {1, 2}
     assert not pool[2].selected
 
@@ -178,14 +182,14 @@ def test_unselected_sibling_in_pool(conn):
 def test_blurry_sibling_excluded(conn):
     add_image(conn, 1, cluster=3)
     add_image(conn, 2, cluster=3, selected=False, blurry=True)
-    assert [p.image_id for p in load_pool(conn, "r", None)] == [1]
+    assert [p.image_id for p in load_pool(conn, 1, None)] == [1]
 
 
 def test_unrelated_unselected_excluded(conn):
     add_image(conn, 1, cluster=3)
     add_image(conn, 2, cluster=4, selected=False)
     add_image(conn, 3, cluster=None, selected=False)
-    assert [p.image_id for p in load_pool(conn, "r", None)] == [1]
+    assert [p.image_id for p in load_pool(conn, 1, None)] == [1]
 
 
 def test_rank_penalises_closed_eyes(conn):
@@ -195,7 +199,7 @@ def test_rank_penalises_closed_eyes(conn):
     add_face(conn, 3, (1, 1, 5, 5), closed=True, smile=0.9)
     add_image(conn, 4, quality=0.6, aesthetic=0.4, selected=True)
     add_face(conn, 4, (1, 1, 5, 5), smile=0.9)
-    pool = {p.image_id: p for p in load_pool(conn, "r", None)}
+    pool = {p.image_id: p for p in load_pool(conn, 1, None)}
     base = 0.45 * 0.6 + 0.35 * 0.4
     assert pool[1].rank == pytest.approx(base)
     assert pool[2].rank == pytest.approx(base + 0.2)
@@ -207,26 +211,26 @@ def test_rank_penalises_closed_eyes(conn):
 def test_rank_clamped(conn):
     add_image(conn, 1, quality=1.0, aesthetic=1.0)
     add_face(conn, 1, (1, 1, 5, 5), smile=1.0)
-    assert load_pool(conn, "r", None)[0].rank == 1.0
+    assert load_pool(conn, 1, None)[0].rank == 1.0
 
 
 def test_saliency_used_from_database(conn):
     add_image(conn, 1, subject=(0.2, 0.2, 0.3, 0.3))
-    region = load_pool(conn, "r", None)[0].regions[0]
+    region = load_pool(conn, 1, None)[0].regions[0]
     assert region.kind == "subject" and region.bbox == Rect(0.2, 0.2, 0.3, 0.3)
 
 
 def test_detector_results_cached(conn):
     add_image(conn, 1)
     detector = FakeDetector([DetectedObject("dog", 0.8, (0.1, 0.1, 0.4, 0.4))])
-    first = load_pool(conn, "r", detector)
+    first = load_pool(conn, 1, detector)
     assert detector.calls == 1
     assert first[0].regions[0].kind == "object"
-    again = load_pool(conn, "r", detector)
+    again = load_pool(conn, 1, detector)
     assert detector.calls == 1
     assert again[0].regions == first[0].regions
     # no detector: cached scan is still read
-    assert load_pool(conn, "r", None)[0].regions == first[0].regions
+    assert load_pool(conn, 1, None)[0].regions == first[0].regions
     row = conn.execute("SELECT detector_model FROM image_object_scans").fetchone()
     assert row[0] == DETECTOR_MODEL
 
@@ -236,7 +240,7 @@ def test_cached_scan_not_rerun_with_progress(conn):
     add_image(conn, 2)
     detector = FakeDetector()
     seen: list[tuple[int, int]] = []
-    load_pool(conn, "r", detector, lambda done, total: seen.append((done, total)))
+    load_pool(conn, 1, detector, lambda done, total: seen.append((done, total)))
     assert detector.calls == 2
     assert seen[-1] == (2, 2)
 
@@ -244,18 +248,18 @@ def test_cached_scan_not_rerun_with_progress(conn):
 def test_scan_rerun_when_sha_changes(conn):
     add_image(conn, 1)
     detector = FakeDetector()
-    load_pool(conn, "r", detector)
+    load_pool(conn, 1, detector)
     conn.execute("UPDATE images SET sha256 = 'other' WHERE id = 1")
-    load_pool(conn, "r", detector)
+    load_pool(conn, 1, detector)
     assert detector.calls == 2
     assert conn.execute("SELECT sha256 FROM image_object_scans").fetchone()[0] == "other"
 
 
 def test_stale_scan_ignored_without_detector(conn):
     add_image(conn, 1)
-    load_pool(conn, "r", FakeDetector([DetectedObject("dog", 0.8, (0.1, 0.1, 0.4, 0.4))]))
+    load_pool(conn, 1, FakeDetector([DetectedObject("dog", 0.8, (0.1, 0.1, 0.4, 0.4))]))
     conn.execute("UPDATE images SET sha256 = 'other' WHERE id = 1")
-    assert load_pool(conn, "r", None)[0].regions == ()
+    assert load_pool(conn, 1, None)[0].regions == ()
 
 
 def test_unreadable_image_does_not_abort(conn):
@@ -263,6 +267,25 @@ def test_unreadable_image_does_not_abort(conn):
     path.write_bytes(b"not an image")
     add_image(conn, 2)
     detector = FakeDetector()
-    pool = load_pool(conn, "r", detector)
+    pool = load_pool(conn, 1, detector)
     assert [p.image_id for p in pool] == [1, 2]
     assert detector.calls == 1
+
+
+def test_archived_uses_proxy_and_skips_detector(conn):
+    path = add_image(conn, 1, exists=False, sha="abc")
+    conn.execute("UPDATE images SET availability = 'archived' WHERE id = 1")
+    detector = FakeDetector([DetectedObject("dog", 0.8, (0.1, 0.1, 0.4, 0.4))])
+    assert load_pool(conn, 1, detector) == []
+    proxy = path.parent / "proxies" / "photos" / "abc.jpg"
+    proxy.parent.mkdir(parents=True)
+    Image.new("RGB", (40, 30)).save(proxy)
+    pool = load_pool(conn, 1, detector)
+    assert [p.image_id for p in pool] == [1]
+    assert detector.calls == 0
+
+
+def test_album_without_run_raises(conn):
+    conn.execute("UPDATE albums SET run_id = NULL")
+    with pytest.raises(ValueError, match="У альбома нет анализа"):
+        load_pool(conn, 1, None)

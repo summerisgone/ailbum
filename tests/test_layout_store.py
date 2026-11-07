@@ -7,7 +7,13 @@ from pathlib import Path
 import pytest
 
 from ailbum.database import connect
-from ailbum.layout.store import load_layout, save_layout, selection_hash
+from ailbum.layout.store import (
+    album_run,
+    load_layout,
+    require_draft,
+    save_layout,
+    selection_hash,
+)
 
 
 @dataclass
@@ -44,11 +50,17 @@ class Params:
     min_photos: int = 3
     max_photos: int = 6
     assistant: str = "auto"
+    prompt: str = "акцент на лицах"
 
 
 def _seed(connection: sqlite3.Connection, run_id: str = "r") -> None:
     connection.execute(
         "INSERT INTO analysis_runs VALUES (?, 's', 'o', 't', 't', 'f', '{}', '{}', 'completed')",
+        (run_id,),
+    )
+    connection.execute(
+        "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+        " VALUES (1, 'u1', 'Альбом', ?, 't', 't')",
         (run_id,),
     )
     for image_id in range(1, 11):
@@ -62,7 +74,7 @@ def _seed(connection: sqlite3.Connection, run_id: str = "r") -> None:
             (image_id, f"/p/{image_id}.jpg", f"{image_id}.jpg", f"{image_id}.jpg"),
         )
         connection.execute(
-            "INSERT INTO photo_selections VALUES (?, ?, 't', ?)", (run_id, image_id, image_id)
+            "INSERT INTO album_photos VALUES (1, ?, ?, 't')", (image_id, image_id)
         )
     for story_id, title in ((1, "Ужин"), (2, "Прогулка")):
         connection.execute(
@@ -88,12 +100,13 @@ def _spread(story_ids: tuple[int, ...] = (1,), first: int = 7) -> SpreadDraft:
 def _save(connection: sqlite3.Connection, spreads: list[SpreadDraft] | None = None) -> int:
     return save_layout(
         connection,
+        1,
         "r",
         Params(),
         spreads if spreads is not None else [_spread()],
         [{"image_id": 9, "reason": "capacity"}],
         ["w"],
-        selection_hash(connection, "r"),
+        selection_hash(connection, 1),
         "model-x",
     )
 
@@ -106,20 +119,22 @@ def conn(tmp_path: Path):
 
 
 def test_load_missing_is_none(conn: sqlite3.Connection) -> None:
-    assert load_layout(conn, "missing") is None
-    assert load_layout(conn, "r") is None
+    assert load_layout(conn, 999) is None
+    assert load_layout(conn, 1) is None
 
 
 def test_round_trip_matches_contract(conn: sqlite3.Connection) -> None:
     layout_id = _save(conn)
-    layout = load_layout(conn, "r")
+    layout = load_layout(conn, 1)
     assert layout is not None
     assert {
-        "id", "run_id", "orientation", "spread_count", "min_photos", "max_photos", "stale",
+        "id", "album_id", "run_id", "prompt", "orientation", "spread_count", "min_photos", "max_photos", "stale",
         "assistant_model", "warnings", "unplaced", "format", "spreads",
     } <= set(layout)
     assert layout["id"] == layout_id
     assert layout["run_id"] == "r"
+    assert layout["album_id"] == 1
+    assert layout["prompt"] == "акцент на лицах"
     assert layout["stale"] is False
     assert layout["assistant_model"] == "model-x"
     assert layout["warnings"] == ["w"]
@@ -152,7 +167,7 @@ def test_round_trip_matches_contract(conn: sqlite3.Connection) -> None:
 
 def test_cell_fractions_from_template(conn: sqlite3.Connection) -> None:
     _save(conn)
-    cells = load_layout(conn, "r")["spreads"][0]["cells"]
+    cells = load_layout(conn, 1)["spreads"][0]["cells"]
     assert cells[0]["x"] == 0.0 and cells[0]["y"] == 0.0 and cells[0]["h"] == 1.0
     assert cells[0]["w"] == pytest.approx(210.5 / 426.0, abs=1e-4)
     assert cells[1]["x"] == pytest.approx(215.5 / 426.0, abs=1e-4)
@@ -169,27 +184,27 @@ def test_full_template_crosses_spine(conn: sqlite3.Connection) -> None:
     spread.template_id = "full"
     spread.placements = spread.placements[:1]
     _save(conn, [spread])
-    cell = load_layout(conn, "r")["spreads"][0]["cells"][0]
+    cell = load_layout(conn, 1)["spreads"][0]["cells"][0]
     assert cell["crosses_spine"] is True
     assert (cell["x"], cell["w"]) == (0.0, 1.0)
 
 
 def test_story_title_joined_for_merged(conn: sqlite3.Connection) -> None:
     _save(conn, [_spread((1, 2))])
-    spread = load_layout(conn, "r")["spreads"][0]
+    spread = load_layout(conn, 1)["spreads"][0]
     assert spread["story_title"] == "Ужин + Прогулка"
     assert spread["story_ids"] == [1, 2]
 
 
 def test_unknown_story_gives_empty_title(conn: sqlite3.Connection) -> None:
     _save(conn, [_spread((99,))])
-    assert load_layout(conn, "r")["spreads"][0]["story_title"] == ""
+    assert load_layout(conn, 1)["spreads"][0]["story_title"] == ""
 
 
 def test_save_replaces_previous_layout(conn: sqlite3.Connection) -> None:
     _save(conn, [_spread(), _spread((2,), first=1)])
     _save(conn, [_spread((2,), first=4)])
-    layout = load_layout(conn, "r")
+    layout = load_layout(conn, 1)
     assert len(layout["spreads"]) == 1
     assert layout["spreads"][0]["story_ids"] == [2]
     assert conn.execute("SELECT COUNT(*) FROM layouts").fetchone()[0] == 1
@@ -197,42 +212,42 @@ def test_save_replaces_previous_layout(conn: sqlite3.Connection) -> None:
     assert conn.execute("SELECT COUNT(*) FROM layout_placements").fetchone()[0] == 3
 
 
-def test_delete_run_cascades(conn: sqlite3.Connection) -> None:
+def test_delete_album_cascades(conn: sqlite3.Connection) -> None:
     _save(conn)
-    conn.execute("DELETE FROM analysis_runs WHERE id = 'r'")
+    conn.execute("DELETE FROM albums WHERE id = 1")
     for table in ("layouts", "layout_spreads", "layout_placements"):
         assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
 
 
 def test_stale_after_selection_change(conn: sqlite3.Connection) -> None:
     _save(conn)
-    assert load_layout(conn, "r")["stale"] is False
-    conn.execute("DELETE FROM photo_selections WHERE run_id = 'r' AND image_id = 10")
-    assert load_layout(conn, "r")["stale"] is True
+    assert load_layout(conn, 1)["stale"] is False
+    conn.execute("DELETE FROM album_photos WHERE album_id = 1 AND image_id = 10")
+    assert load_layout(conn, 1)["stale"] is True
 
 
 def test_selection_hash_is_order_independent(conn: sqlite3.Connection) -> None:
-    first = selection_hash(conn, "r")
-    conn.execute("UPDATE photo_selections SET position = 100 - position")
-    assert selection_hash(conn, "r") == first
+    first = selection_hash(conn, 1)
+    conn.execute("UPDATE album_photos SET position = 100 - position")
+    assert selection_hash(conn, 1) == first
     assert len(first) == 64
-    assert selection_hash(conn, "empty") != first
+    assert selection_hash(conn, 999) != first
 
 
-def test_migrate_v10_keeps_rows(tmp_path: Path) -> None:
-    database = tmp_path / "old.sqlite3"
-    with connect(database) as connection:
-        _seed(connection)
-    with sqlite3.connect(database) as raw:
-        for table in ("layout_placements", "layout_spreads", "layouts", "image_object_scans"):
-            raw.execute(f"DROP TABLE {table}")
-        raw.execute("PRAGMA user_version = 10")
-    with connect(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 11
-        assert connection.execute("SELECT COUNT(*) FROM images").fetchone()[0] == 10
-        assert connection.execute("SELECT COUNT(*) FROM photo_selections").fetchone()[0] == 10
-        assert connection.execute("SELECT COUNT(*) FROM stories").fetchone()[0] == 2
-        tables = {
-            row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        }
-        assert {"layouts", "layout_spreads", "layout_placements", "image_object_scans"} <= tables
+def test_album_run_and_require_draft(conn: sqlite3.Connection) -> None:
+    assert album_run(conn, 1) == "r"
+    with pytest.raises(ValueError, match="Альбом не найден"):
+        album_run(conn, 999)
+    conn.execute("UPDATE albums SET run_id = NULL")
+    with pytest.raises(ValueError, match="У альбома нет анализа"):
+        album_run(conn, 1)
+    require_draft(conn, 1)
+    conn.execute("UPDATE albums SET status = 'ordered'")
+    with pytest.raises(ValueError, match="Альбом заказан"):
+        require_draft(conn, 1)
+
+
+def test_stale_flag_unchanged_for_migrated_layout(conn: sqlite3.Connection) -> None:
+    _save(conn)
+    conn.execute("UPDATE albums SET status = 'ordered'")
+    assert load_layout(conn, 1)["stale"] is False

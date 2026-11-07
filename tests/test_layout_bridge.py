@@ -10,7 +10,7 @@ from ailbum.layout import editing, service
 from ailbum.layout.types import LayoutParams
 
 PARAMS = {
-    "run_id": "r",
+    "album_id": 1,
     "orientation": "vertical",
     "spread_count": 4,
     "min_photos": 3,
@@ -71,8 +71,8 @@ def test_dispatch_preflight_builds_params(fakes, tmp_path: Path):
     if __import__("os").environ.get("SUPERLITE_REAL") == "1":
         pytest.skip("uses fakes")
     desktop_bridge._dispatch(tmp_path / "a.db", "layout.preflight", dict(PARAMS))
-    _, _db, run_id, params = fakes[0]
-    assert run_id == "r"
+    _, _db, album_id, params = fakes[0]
+    assert album_id == 1
     assert params == LayoutParams("vertical", 4, 3, 5, "off")
     desktop_bridge._dispatch(
         tmp_path / "a.db", "layout.preflight", {**PARAMS, "prompt": "лица" * 400})
@@ -82,7 +82,7 @@ def test_dispatch_preflight_builds_params(fakes, tmp_path: Path):
 def test_dispatch_layout_get_null(tmp_path: Path):
     db = tmp_path / "a.db"
     desktop_bridge._dispatch(db, "database.initialize", {})
-    assert desktop_bridge._dispatch(db, "layout.get", {"run_id": "nope"}) is None
+    assert desktop_bridge._dispatch(db, "layout.get", {"album_id": 999}) is None
 
 
 def test_dispatch_templates():
@@ -97,14 +97,14 @@ def test_dispatch_templates():
 
 def test_job_parser_accepts_layout_kind():
     args = desktop_job.build_parser().parse_args(
-        ["layout", "--database", "a.db", "--run-id", "r", "--params", "{}"]
+        ["layout", "--database", "a.db", "--album-id", "1", "--params", "{}"]
     )
-    assert args.kind == "layout" and args.run_id == "r" and args.params == "{}"
+    assert args.kind == "layout" and args.album_id == 1 and args.params == "{}"
 
 
 def test_invalid_params_json_emits_error_event(capsys):
     with pytest.raises(SystemExit) as exit_info:
-        desktop_job.main(["layout", "--database", "a.db", "--run-id", "r", "--params", "{bad"])
+        desktop_job.main(["layout", "--database", "a.db", "--album-id", "1", "--params", "{bad"])
     assert exit_info.value.code == 2
     event = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert event["type"] == "error"
@@ -113,21 +113,21 @@ def test_invalid_params_json_emits_error_event(capsys):
 def test_layout_job_runs_generate_and_reports_progress(monkeypatch, capsys):
     seen = {}
 
-    def fake_generate(database, run_id, params, models_dir, progress=None):
-        seen["args"] = (run_id, params, models_dir)
+    def fake_generate(database, album_id, params, models_dir, progress=None):
+        seen["args"] = (album_id, params, models_dir)
         progress("Компоновка", "x", 1, 2)
         return {"id": 3}
 
     monkeypatch.setattr(service, "generate", fake_generate)
     desktop_job.main(
-        ["layout", "--database", "a.db", "--run-id", "r", "--models-dir", "m",
-         "--params", json.dumps({k: v for k, v in PARAMS.items() if k != "run_id"})]
+        ["layout", "--database", "a.db", "--album-id", "1", "--models-dir", "m",
+         "--params", json.dumps({k: v for k, v in PARAMS.items() if k != "album_id"})]
     )
     lines = [json.loads(x) for x in capsys.readouterr().out.strip().splitlines()]
     assert lines[0] == {"type": "progress", "stage": "Компоновка", "detail": "x",
                         "current": 1, "total": 2}
     assert lines[-1] == {"type": "complete", "result": {"id": 3}}
-    assert seen["args"] == ("r", LayoutParams("vertical", 4, 3, 5, "off"), Path("m"))
+    assert seen["args"] == (1, LayoutParams("vertical", 4, 3, 5, "off"), Path("m"))
 
 
 def test_export_originals_copies_in_album_order(tmp_path: Path):
@@ -149,18 +149,41 @@ def test_export_originals_copies_in_album_order(tmp_path: Path):
                 " indexed_at) VALUES (?, ?, 's', ?, ?, 'jpg', 1, 't', 'x', '{}', '{}', 't')",
                 (i, str(photos / f"p{i}.jpg"), f"p{i}", f"p{i}.jpg"),
             )
-        c.execute("INSERT INTO layouts (id, run_id, orientation, spread_count, min_photos,"
+        c.execute(
+            "INSERT INTO albums (id, public_id, title, run_id, created_at, updated_at)"
+            " VALUES (1, 'u1', 'А', 'r', 't', 't')")
+        c.execute("INSERT INTO layouts (id, album_id, run_id, orientation, spread_count, min_photos,"
                   " max_photos, selection_hash, created_at, updated_at)"
-                  " VALUES (1,'r','vertical',2,1,2,'h','t','t')")
+                  " VALUES (1,1,'r','vertical',2,1,2,'h','t','t')")
         c.execute("INSERT INTO layout_spreads VALUES (5, 1, 2, 'full', '[]', '[]', NULL)")
         c.execute("INSERT INTO layout_spreads VALUES (6, 1, 1, 'pages', '[]', '[]', NULL)")
         for spread, cell, image in ((5, 0, 1), (6, 0, 2), (6, 1, 3)):
             c.execute("INSERT INTO layout_placements VALUES (?, ?, ?, 0, 0, 1, 1, 1, '[]', NULL)",
                       (spread, cell, image))
     out = tmp_path / "out"
-    result = desktop_bridge._dispatch(db, "layout.export", {"run_id": "r", "folder": str(out)})
+    result = desktop_bridge._dispatch(db, "layout.export", {"album_id": 1, "folder": str(out)})
     assert result["count"] == 2
     assert result["missing"] == [str(photos / "p3.jpg")]
     assert sorted(p.name for p in (out / EXPORT_DIR).iterdir()) == ["01-1_p2.jpg", "02-1_p1.jpg"]
-    again = export_originals(db, "r", out)
+    again = export_originals(db, 1, out)
     assert again["folder"] == str(out / f"{EXPORT_DIR} 2")
+
+
+def test_analysis_job_attaches_run(monkeypatch, tmp_path: Path):
+    from ailbum import albums
+
+    seen = {}
+    monkeypatch.setattr(
+        desktop_job, "analyze_library",
+        lambda *a, **k: {"run_id": "r9", "summary": {"n": 1}},
+    )
+    monkeypatch.setattr(
+        albums, "attach_run",
+        lambda connection, run_id, sources: seen.setdefault("a", (run_id, sources)) and 7,
+        raising=False,
+    )
+    source = tmp_path / "ph"
+    source.mkdir()
+    result = desktop_job.run_analysis(tmp_path / "a.db", source, tmp_path / "o")
+    assert result == {"run_id": "r9", "album_id": 7, "summary": {"n": 1}}
+    assert seen["a"] == ("r9", [str(source.resolve())])

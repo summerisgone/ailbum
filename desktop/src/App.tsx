@@ -4,6 +4,7 @@ import {
   ChevronRight,
   CircleUserRound,
   Database,
+  FolderTree,
   FolderInput,
   EyeOff,
   FolderOpen,
@@ -45,6 +46,8 @@ import type {
   Story,
 } from "./types";
 import { LayoutSection } from "./layout/LayoutSection";
+import { AlbumManager, type AlbumStatus } from "./AlbumManager";
+import type { Album, ArchiveResult, Usage } from "./types";
 
 const DAY_FORMAT = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -136,14 +139,21 @@ function App() {
   const [pending, setPending] = useState<Set<number>>(() => new Set());
   const [query, setQuery] = useState("");
   const [targetDraft, setTargetDraft] = useState("24");
-  const [section, setSection] = useState<"photos" | "people" | "layout">("photos");
+  const [section, setSection] = useState<"photos" | "people" | "layout" | "albums">("photos");
   const [viewerPhotoId, setViewerPhotoId] = useState<number | null>(null);
   const [storyJump, setStoryJump] = useState<StoryJump | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [databaseJob, setDatabaseJob] = useState<DatabaseJob>({ status: "idle" });
 
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [albumBusy, setAlbumBusy] = useState(false);
+  const [archiveNote, setArchiveNote] = useState<ArchiveResult | null>(null);
+  const [autofilling, setAutofilling] = useState(false);
+
   const applyLibrary = useCallback((next: Library) => {
     setLibrary(next);
+    if (next.albums) setAlbums(next.albums);
     setTargetDraft(String(next.target_count));
     setViewerPhotoId(null);
     setError(null);
@@ -152,6 +162,89 @@ function App() {
   useEffect(() => {
     window.ailbum.bootstrap().then(applyLibrary).catch((reason) => setError(String(reason)));
   }, [applyLibrary]);
+
+  const albumId = library?.album?.id ?? null;
+  const readOnly = Boolean(library?.album && library.album.status !== "draft");
+
+  const refreshAlbums = useCallback(async () => {
+    const [list, used] = await Promise.all([window.ailbum.listAlbums(), window.ailbum.getUsage()]);
+    setAlbums(list);
+    setUsage(used);
+  }, []);
+
+  const reload = useCallback(
+    async (id?: number) => {
+      try {
+        applyLibrary(await window.ailbum.bootstrap(id));
+        await refreshAlbums();
+      } catch (reason) {
+        setError(String(reason));
+      }
+    },
+    [applyLibrary, refreshAlbums],
+  );
+
+  useEffect(() => {
+    if (section === "albums") refreshAlbums().catch((reason) => setError(String(reason)));
+  }, [section, refreshAlbums]);
+
+  const albumAction = useCallback(
+    async (action: () => Promise<unknown>, reopen = true) => {
+      setAlbumBusy(true);
+      try {
+        await action();
+        if (reopen) await reload(albumId ?? undefined);
+        else await refreshAlbums();
+      } catch (reason) {
+        setError(String(reason));
+      } finally {
+        setAlbumBusy(false);
+      }
+    },
+    [albumId, reload, refreshAlbums],
+  );
+
+  const archiveAlbum = useCallback(
+    async (id: number) => {
+      setAlbumBusy(true);
+      setArchiveNote(null);
+      try {
+        const result = await window.ailbum.archiveAlbum(id);
+        if (!("cancelled" in result)) setArchiveNote(result);
+        await reload(albumId ?? undefined);
+      } catch (reason) {
+        setError(String(reason));
+      } finally {
+        setAlbumBusy(false);
+      }
+    },
+    [albumId, reload],
+  );
+
+  const autofill = useCallback(async () => {
+    if (albumId == null) return;
+    setAutofilling(true);
+    try {
+      await window.ailbum.autofill(albumId);
+      applyLibrary(await window.ailbum.bootstrap(albumId));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAutofilling(false);
+    }
+  }, [albumId, applyLibrary]);
+
+  const confirmMissing = useCallback(
+    async (imageId: number) => {
+      try {
+        await window.ailbum.confirmMissing([imageId]);
+        await reload(albumId ?? undefined);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    },
+    [albumId, reload],
+  );
 
   useEffect(() => {
     window.ailbum.getDatabaseJob().then(setDatabaseJob).catch(() => undefined);
@@ -211,7 +304,7 @@ function App() {
 
   const toggleFavorite = useCallback(
     async (photo: Photo, favorite: boolean) => {
-      if (!library?.run || pending.has(photo.id)) return;
+      if (!library?.album || readOnly || pending.has(photo.id)) return;
       const previous = library;
       const maxPosition = Math.max(
         0,
@@ -232,7 +325,7 @@ function App() {
         ),
       });
       try {
-        const result = await window.ailbum.setFavorite(library.run.id, photo.id, favorite);
+        const result = await window.ailbum.setFavorite(library.album.id, photo.id, favorite);
         setLibrary((current) =>
           current ? { ...current, selected_count: result.selected_count } : current,
         );
@@ -247,7 +340,7 @@ function App() {
         });
       }
     },
-    [library, pending],
+    [library, pending, readOnly],
   );
 
   const openPhotosAtStory = useCallback((storyId: number | null) => {
@@ -267,16 +360,16 @@ function App() {
   );
 
   const saveTarget = useCallback(async () => {
-    if (!library?.run) return;
+    if (!library?.album || readOnly) return;
     const parsed = Math.min(999, Math.max(1, Number.parseInt(targetDraft, 10) || 1));
     setTargetDraft(String(parsed));
     setLibrary((current) => (current ? { ...current, target_count: parsed } : current));
     try {
-      await window.ailbum.setTarget(library.run.id, parsed);
+      await window.ailbum.setTarget(library.album.id, parsed);
     } catch (reason) {
       setError(String(reason));
     }
-  }, [library?.run, targetDraft]);
+  }, [library?.album, readOnly, targetDraft]);
 
   const chooseDatabase = useCallback(async () => {
     try {
@@ -312,6 +405,14 @@ function App() {
             <Images size={22} />
           </button>
           <button
+            className={`nav-button${section === "albums" ? " active" : ""}`}
+            title="Альбомы"
+            data-section="albums"
+            onClick={() => setSection("albums")}
+          >
+            <FolderTree size={22} />
+          </button>
+          <button
             className={`nav-button${section === "people" ? " active" : ""}`}
             title="Люди и лица"
             data-section="people"
@@ -342,7 +443,7 @@ function App() {
       <main className="workspace">
         <header className="topbar">
           <div className="title-block">
-            <h1>{section === "photos" ? "Отбор фотографий" : section === "people" ? "Люди и лица" : "Раскладка"}</h1>
+            <h1>{section === "photos" ? "Отбор фотографий" : section === "people" ? "Люди и лица" : section === "albums" ? "Альбомы" : "Раскладка"}</h1>
             <button className="database-button" onClick={chooseDatabase} title={library?.database}>
               <Database size={13} />
               <span>{library?.database.split(/[\\/]/).at(-1) ?? "Каталог"}</span>
@@ -369,7 +470,7 @@ function App() {
               onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
               inputMode="numeric"
               aria-label="Целевое количество фотографий"
-              disabled={!library?.run}
+              disabled={!library?.album || readOnly}
             />
             <span>фото</span>
           </div>}
@@ -388,13 +489,79 @@ function App() {
           </div>
         )}
 
-        {section === "people" ? (
+        {readOnly && library?.album && section !== "albums" && (
+          <div className="readonly-banner">
+            <span>
+              {library.album.status === "ordered"
+                ? "Альбом заказан - только просмотр"
+                : "Альбом в архиве - только просмотр"}
+            </span>
+            {library.album.status === "ordered" && (
+              <button
+                disabled={albumBusy}
+                onClick={() => albumAction(() => window.ailbum.setAlbumStatus(library.album!.id, "draft"))}
+              >
+                Вернуть в работу
+              </button>
+            )}
+          </div>
+        )}
+
+        {section === "albums" ? (
+          <div className="albums-section">
+            {archiveNote && "archived" in archiveNote && (
+              <div className="archive-result">
+                <strong>Архивировано фото: {archiveNote.archived}</strong>
+                {archiveNote.blocked.length > 0 && (
+                  <ul>{archiveNote.blocked.map((item) => (
+                    <li key={item.image_id}>Фото {item.image_id}: {item.reason}</li>
+                  ))}</ul>
+                )}
+                {archiveNote.failed.length > 0 && (
+                  <ul>{archiveNote.failed.map((item) => <li key={item}>Не удалось: {item}</li>)}</ul>
+                )}
+              </div>
+            )}
+            {archiveNote && "needsExport" in archiveNote && archiveNote.needsExport === true && (
+              <div className="archive-result">
+                <strong>Нужен экспорт</strong>
+                {archiveNote.blocked.length > 0 && (
+                  <ul>{archiveNote.blocked.map((item) => (
+                    <li key={item.image_id}>Фото {item.image_id}: {item.reason}</li>
+                  ))}</ul>
+                )}
+              </div>
+            )}
+            <AlbumManager
+              albums={albums}
+              activeId={albumId}
+              usage={usage}
+              busy={albumBusy}
+              onOpen={async (id) => {
+                await reload(id);
+                setSection("photos");
+              }}
+              onStatus={(id, status: AlbumStatus) =>
+                albumAction(() => window.ailbum.setAlbumStatus(id, status))
+              }
+              onRename={(id, title) => albumAction(() => window.ailbum.renameAlbum(id, title))}
+              onDelete={(id, forget) =>
+                albumAction(async () => {
+                  await window.ailbum.deleteAlbum(id, forget);
+                  if (id === albumId) await reload();
+                }, false)
+              }
+              onArchive={archiveAlbum}
+            />
+          </div>
+        ) : section === "people" ? (
           <PeopleEditor database={library?.database ?? ""} onError={setError} />
         ) : section === "layout" ? (
-          library?.run ? (
+          library?.album ? (
             <LayoutSection
-              key={library.run.id}
-              runId={library.run.id}
+              key={library.album.id}
+              albumId={library.album.id}
+              readOnly={readOnly}
               onError={setError}
               onOpenPhotos={openPhotosAtStory}
               onSetFavorite={setFavoriteById}
@@ -402,7 +569,7 @@ function App() {
           ) : (
             <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
           )
-        ) : !library?.run ? (
+        ) : !library?.album ? (
           <EmptyState onChooseDatabase={chooseDatabase} hasPhotos={Boolean(library?.photos.length)} />
         ) : (
           <>
@@ -419,13 +586,14 @@ function App() {
               </div>
             </div>
             <VirtualPhotoGrid
-              key={library.run.id}
+              key={library.album.id}
               photos={photos}
               stories={library.stories}
               selectedCountByStory={selectedCountByStory}
               pending={pending}
               storyJump={storyJump}
               onToggle={toggleFavorite}
+              readOnly={readOnly}
               onOpen={(photo) => setViewerPhotoId(photo.id)}
             />
             <SelectionTray
@@ -434,6 +602,9 @@ function App() {
               pending={pending}
               onRemove={(photo) => toggleFavorite(photo, false)}
               onJump={jumpToPhotoStory}
+              readOnly={readOnly}
+              autofilling={autofilling}
+              onAutofill={autofill}
             />
           </>
         )}
@@ -444,6 +615,8 @@ function App() {
           photoId={viewerPhotoId}
           pending={pending.has(viewerPhotoId)}
           onToggle={toggleFavorite}
+          readOnly={readOnly}
+          onConfirmMissing={confirmMissing}
           onChange={setViewerPhotoId}
           onClose={() => setViewerPhotoId(null)}
         />
@@ -554,7 +727,7 @@ function DatabaseManager({
             </div>
             <div className="database-stats">
               <div><strong>{summary?.available ?? library.photos.length}</strong><span>фото</span></div>
-              <div><strong>{summary?.analysis_runs ?? (library.run ? 1 : 0)}</strong><span>анализов</span></div>
+              <div><strong>{summary?.analysis_runs ?? (library.run || library.album ? 1 : 0)}</strong><span>анализов</span></div>
               <div><strong>{summary?.people ?? 0}</strong><span>людей</span></div>
               <div><strong>{summary?.stories ?? library.stories.length}</strong><span>сюжетов</span></div>
             </div>
@@ -605,16 +778,16 @@ function DatabaseManager({
 
           <section className="manager-section analysis-section">
             <div className="section-copy">
-              <strong>{folders.length === 1 ? "Анализ выбранной папки" : library.run ? "Повторный анализ" : "Анализ фотографий"}</strong>
-              <span>{folders.length === 1 ? `Источник: ${folders[0]}` : library.run ? `Последний источник: ${library.run.source}` : "Выберите одну папку выше, чтобы запустить первый анализ."}</span>
+              <strong>{folders.length === 1 ? "Анализ выбранной папки" : library.run || library.album ? "Повторный анализ" : "Анализ фотографий"}</strong>
+              <span>{folders.length === 1 ? `Источник: ${folders[0]}` : library.run ? `Последний источник: ${library.run.source}` : library.album?.sources[0] ? `Источник: ${library.album.sources[0]}` : "Выберите одну папку выше, чтобы запустить первый анализ."}</span>
             </div>
             <button
               className="manager-primary secondary"
-              disabled={running || (!library.run && folders.length !== 1)}
+              disabled={running || (!library.run && !library.album && folders.length !== 1)}
               onClick={() => startJob("analyze", folders.length === 1 ? folders : [])}
             >
               {running && job.kind === "analyze" ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}
-              {folders.length === 1 || !library.run ? "Запустить анализ папки" : "Запустить анализ заново"}
+              {folders.length === 1 || !(library.run || library.album) ? "Запустить анализ папки" : "Запустить анализ заново"}
             </button>
           </section>
 
@@ -1016,7 +1189,9 @@ function VirtualPhotoGrid({
   storyJump,
   onToggle,
   onOpen,
+  readOnly,
 }: {
+  readOnly: boolean;
   photos: Photo[];
   stories: Story[];
   selectedCountByStory: Map<number, number>;
@@ -1219,6 +1394,7 @@ function VirtualPhotoGrid({
                   photo={item.representative}
                   pending={pending.has(item.representative.id)}
                   onToggle={onToggle}
+                  readOnly={readOnly}
                   onOpen={() => setExpandedSeries((current) => {
                     const next = new Set(current);
                     next.add(item.seriesKey);
@@ -1232,6 +1408,7 @@ function VirtualPhotoGrid({
                   photo={item.photo}
                   pending={pending.has(item.photo.id)}
                   onToggle={onToggle}
+                  readOnly={readOnly}
                   onOpen={onOpen}
                   expandedSeries={item.series}
                   onCollapseSeries={item.series?.isFirst ? () => {
@@ -1260,8 +1437,10 @@ const PhotoCard = memo(function PhotoCard({
   stackSize,
   expandedSeries,
   onCollapseSeries,
+  readOnly,
 }: {
   photo: Photo;
+  readOnly?: boolean;
   pending: boolean;
   onToggle(photo: Photo, favorite: boolean): void;
   onOpen(photo: Photo): void;
@@ -1320,13 +1499,18 @@ const PhotoCard = memo(function PhotoCard({
               event.stopPropagation();
               onToggle(photo, !photo.favorite);
             }}
-            disabled={pending}
+            disabled={pending || readOnly}
             aria-label={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
             title={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
           >
             {pending ? <LoaderCircle className="spin" size={17} /> : photo.favorite ? <Check size={17} /> : <Plus size={17} />}
           </button>
         </div>
+        {photo.availability !== "present" && (
+          <span className={`availability-badge ${photo.availability}`}>
+            {photo.availability === "missing" ? "нет файла" : "архив"}
+          </span>
+        )}
         <div className="photo-flags">
           {photo.auto_selected && <span title="Рекомендовано анализатором"><Sparkles size={13} /></span>}
           {photo.similar_cluster != null && <span title={`Группа похожих №${photo.similar_cluster}`}><Layers3 size={13} /></span>}
@@ -1354,11 +1538,15 @@ function PhotoViewer({
   photoId,
   pending,
   onToggle,
+  readOnly,
+  onConfirmMissing,
   onChange,
   onClose,
 }: {
   photos: Photo[];
   photoId: number;
+  readOnly: boolean;
+  onConfirmMissing(imageId: number): void;
   pending: boolean;
   onToggle(photo: Photo, favorite: boolean): void;
   onChange(photoId: number): void;
@@ -1404,13 +1592,18 @@ function PhotoViewer({
           <button
             className={`viewer-select${photo.favorite ? " selected" : ""}`}
             onClick={() => onToggle(photo, !photo.favorite)}
-            disabled={pending}
+            disabled={pending || readOnly}
             aria-pressed={photo.favorite}
             title={photo.favorite ? "Убрать из выбранного" : "Добавить в выбранное"}
           >
             {pending ? <LoaderCircle className="spin" size={14} /> : photo.favorite ? <Check size={14} /> : <Plus size={14} />}
             {photo.favorite ? "Выбрано" : "Выбрать"}
           </button>
+          {photo.availability === "missing" && (
+            <button className="viewer-confirm" onClick={() => onConfirmMissing(photo.id)}>
+              Подтвердить удаление
+            </button>
+          )}
           {score != null && <span>Качество <b>{score}</b></span>}
           <span>{index + 1} / {photos.length}</span>
         </div>
@@ -1455,7 +1648,13 @@ function SelectionTray({
   pending,
   onRemove,
   onJump,
+  readOnly,
+  autofilling,
+  onAutofill,
 }: {
+  readOnly: boolean;
+  autofilling: boolean;
+  onAutofill(): void;
   photos: Photo[];
   target: number;
   pending: Set<number>;
@@ -1471,6 +1670,9 @@ function SelectionTray({
           <Heart size={16} fill="currentColor" />
           <strong>Выбрано</strong>
           <span>{photos.length} из {target}</span>
+          <button className="tray-autofill" onClick={onAutofill} disabled={readOnly || autofilling}>
+            {autofilling ? "Дополняем…" : "Дополнить автоматически"}
+          </button>
         </div>
         <div className="progress-track" aria-label={`Выбрано ${progress}%`}>
           <span style={{ width: `${progress}%` }} />
@@ -1502,7 +1704,7 @@ function SelectionTray({
             <button
               className="thumb-remove"
               onClick={() => onRemove(photo)}
-              disabled={pending.has(photo.id)}
+              disabled={pending.has(photo.id) || readOnly}
               title="Убрать из выбранного"
               aria-label={`Убрать ${photo.file_name}`}
             >

@@ -13,7 +13,7 @@ export type WizardParams = {
 };
 
 type Props = {
-  runId: string;
+  albumId: number;
   busy: boolean;
   replacing: boolean;
   onCreate(params: WizardParams): void;
@@ -25,7 +25,7 @@ function parseCount(value: string): number {
   return /^\d+$/.test(value.trim()) ? Number(value) : Number.NaN;
 }
 
-export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onError }: Props) {
+export function LayoutWizard({ albumId, busy, replacing, onCreate, onCancel, onError }: Props) {
   const [orientation, setOrientation] = useState<WizardParams["orientation"]>("vertical");
   const [spreads, setSpreads] = useState("4");
   const [minPhotos, setMinPhotos] = useState("3");
@@ -52,7 +52,7 @@ export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onErr
     setLoading(true);
     const timer = window.setTimeout(() => {
       window.ailbum
-        .layoutPreflight(runId, { orientation, spread_count: spreadCount, min_photos: min, max_photos: max })
+        .layoutPreflight(albumId, { orientation, spread_count: spreadCount, min_photos: min, max_photos: max })
         .then((result) => {
           if (id !== requestId.current) return;
           setPreflight(result);
@@ -65,7 +65,7 @@ export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onErr
         });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [runId, orientation, spreadCount, min, max, inputValid, onError]);
+  }, [albumId, orientation, spreadCount, min, max, inputValid, onError]);
 
   const hint = preflight ? Math.max(1, Math.floor(preflight.unit_count / 4)) : null;
   const errors = !inputValid ? ["Введите целые числа"] : preflight?.errors ?? [];

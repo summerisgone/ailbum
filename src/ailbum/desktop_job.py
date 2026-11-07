@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ailbum.catalog import index_library
+from ailbum.database import connect
 from ailbum.layout import service
 from ailbum.layout.preferences import MAX_PROMPT
 from ailbum.layout.types import LayoutParams
@@ -126,7 +127,11 @@ def run_analysis(
         progress=progress,
         database=database,
     )
-    return {"run_id": manifest["run_id"], "summary": manifest["summary"]}
+    from ailbum.albums import attach_run
+
+    with connect(database) as connection:
+        album_id = attach_run(connection, manifest["run_id"], [str(actual_source.resolve())])
+    return {"run_id": manifest["run_id"], "album_id": album_id, "summary": manifest["summary"]}
 
 
 def layout_params(raw: str) -> LayoutParams:
@@ -144,12 +149,12 @@ def layout_params(raw: str) -> LayoutParams:
 
 
 def run_layout(
-    database: Path, run_id: str, raw_params: str, models_dir: Path | None = None
+    database: Path, album_id: int, raw_params: str, models_dir: Path | None = None
 ) -> dict[str, object]:
     params = layout_params(raw_params)
     return service.generate(
         database,
-        run_id,
+        album_id,
         params,
         models_dir,
         lambda stage, detail, current, total: emit(
@@ -171,7 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source", type=Path, action="append")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--models-dir", type=Path)
-    parser.add_argument("--run-id")
+    parser.add_argument("--album-id", type=int)
     parser.add_argument("--params")
     return parser
 
@@ -180,9 +185,9 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     try:
         if args.kind == "layout":
-            if not args.run_id or args.params is None:
-                raise ValueError("Не указаны запуск и параметры раскладки")
-            result = run_layout(args.database, args.run_id, args.params, args.models_dir)
+            if args.album_id is None or args.params is None:
+                raise ValueError("Не указаны альбом и параметры раскладки")
+            result = run_layout(args.database, args.album_id, args.params, args.models_dir)
         elif args.kind == "index":
             if not args.source:
                 raise ValueError("Не выбраны папки с фотографиями")

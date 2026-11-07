@@ -22,6 +22,7 @@ const mediaPaths = new Map();
 const faceMedia = new Map();
 const thumbnailCache = new Map();
 const THUMBNAIL_CACHE_LIMIT = 256;
+const EXPORT_TIMEOUT_MS = 600_000;
 
 function pythonExecutable() {
   if (process.env.AILBUM_PYTHON) return process.env.AILBUM_PYTHON;
@@ -105,13 +106,13 @@ class PythonBridge {
     else request.resolve(response.result);
   }
 
-  request(action, payload = {}) {
+  request(action, payload = {}, timeoutMs = 20_000) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Python bridge timed out: ${action}`));
-      }, 20_000);
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
       this.process.stdin.write(`${JSON.stringify({ id, action, payload })}\n`);
     });
@@ -135,14 +136,17 @@ function startBridge() {
   bridge = new PythonBridge(databasePath);
 }
 
-async function bootstrap() {
+async function bootstrap(albumId) {
   if (!bridge) startBridge();
   if (!existsSync(databasePath)) await bridge.request("database.initialize");
-  const library = await bridge.request("library.bootstrap");
+  const library = await bridge.request(
+    "library.bootstrap",
+    albumId == null ? {} : { album_id: Number(albumId) },
+  );
   mediaPaths.clear();
   faceMedia.clear();
   thumbnailCache.clear();
-  for (const photo of library.photos) mediaPaths.set(Number(photo.id), photo.path);
+  for (const photo of library.photos) mediaPaths.set(Number(photo.id), photo.media_path);
   return library;
 }
 
@@ -188,7 +192,11 @@ async function faceThumbnailFor(faceId, face) {
   }
   thumbnail = bridge
     .request("face.thumbnail", { face_id: faceId })
-    .then((result) => Buffer.from(result.base64, "base64"));
+    .then((result) => Buffer.from(result.base64, "base64"))
+    .catch((error) => {
+      thumbnailCache.delete(cacheKey);
+      throw error;
+    });
   thumbnailCache.set(cacheKey, thumbnail);
   if (thumbnailCache.size > THUMBNAIL_CACHE_LIMIT) {
     thumbnailCache.delete(thumbnailCache.keys().next().value);
@@ -280,7 +288,7 @@ function startDatabaseJob(kind, sources = [], layout) {
   if (activeJob) throw new Error("Уже выполняется добавление или анализ фотографий");
   const args = [kind, "--database", databasePath, "--models-dir", runtimeModelsPath()];
   for (const source of sources) args.push("--source", path.resolve(source));
-  if (kind === "layout") args.push("--run-id", layout.runId, "--params", JSON.stringify(layout.params));
+  if (kind === "layout") args.push("--album-id", String(layout.albumId), "--params", JSON.stringify(layout.params));
   const invocation = backendInvocation("job", "ailbum.desktop_job", args);
   const process = spawn(invocation.executable, invocation.args, {
     cwd: invocation.cwd,
@@ -368,7 +376,7 @@ app.whenReady().then(() => {
     const imageId = Number(url.pathname.slice(1));
     if (url.host === "face") {
       const face = faceMedia.get(imageId);
-      if (!face || !existsSync(face.path)) {
+      if (!face) {
         return new Response("Face not found", { status: 404 });
       }
       const bytes = await faceThumbnailFor(imageId, face);
@@ -396,21 +404,83 @@ app.whenReady().then(() => {
     });
   });
 
-  ipcMain.handle("library:bootstrap", () => bootstrap());
+  ipcMain.handle("library:bootstrap", (_event, { albumId } = {}) => bootstrap(albumId));
   ipcMain.handle("database:summary", () => bridge.request("database.summary"));
-  ipcMain.handle("favorite:set", (_event, { runId, imageId, favorite }) =>
+  ipcMain.handle("favorite:set", (_event, { albumId, imageId, favorite }) =>
     bridge.request("favorite.set", {
-      run_id: String(runId),
+      album_id: Number(albumId),
       image_id: Number(imageId),
       favorite: Boolean(favorite),
     }),
   );
-  ipcMain.handle("target:set", (_event, { runId, targetCount }) =>
+  ipcMain.handle("target:set", (_event, { albumId, targetCount }) =>
     bridge.request("target.set", {
-      run_id: String(runId),
+      album_id: Number(albumId),
       target_count: Number(targetCount),
     }),
   );
+  ipcMain.handle("selection:autofill", (_event, { albumId }) =>
+    bridge.request("selection.autofill", { album_id: Number(albumId) }),
+  );
+  ipcMain.handle("album:list", () => bridge.request("album.list"));
+  ipcMain.handle("album:status", (_event, { albumId, status }) =>
+    bridge.request("album.status", { album_id: Number(albumId), status: String(status) }),
+  );
+  ipcMain.handle("album:rename", (_event, { albumId, title }) =>
+    bridge.request("album.rename", { album_id: Number(albumId), title: String(title || "") }),
+  );
+  ipcMain.handle("album:delete", (_event, { albumId, forgetDecisions }) =>
+    bridge.request("album.delete", {
+      album_id: Number(albumId),
+      forget_decisions: Boolean(forgetDecisions),
+    }),
+  );
+  ipcMain.handle("album:confirm-missing", (_event, { imageIds }) =>
+    bridge.request("album.confirm_missing", {
+      image_ids: Array.isArray(imageIds) ? imageIds.map(Number) : [],
+    }),
+  );
+  ipcMain.handle("album:usage", () => bridge.request("album.usage"));
+  ipcMain.handle("album:archive", async (_event, { albumId }) => {
+    const id = Number(albumId);
+    let plan = await bridge.request("album.prepare_archive", { album_id: id }, EXPORT_TIMEOUT_MS);
+    if (plan.needs_export) {
+      const chosen = await dialog.showOpenDialog({
+        title: "Куда сохранить оригиналы перед удалением",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      if (chosen.canceled || !chosen.filePaths[0]) return { cancelled: true };
+      await bridge.request(
+        "layout.export",
+        { album_id: id, folder: path.resolve(chosen.filePaths[0]) },
+        EXPORT_TIMEOUT_MS,
+      );
+      plan = await bridge.request("album.prepare_archive", { album_id: id }, EXPORT_TIMEOUT_MS);
+      if (plan.needs_export) {
+        return { needsExport: true, blocked: plan.blocked || [] };
+      }
+    }
+    const trashed = [];
+    const failed = [];
+    for (const item of plan.trash || []) {
+      try {
+        await shell.trashItem(item);
+        trashed.push(item);
+      } catch {
+        failed.push(item);
+      }
+    }
+    const result = await bridge.request("album.complete_archive", {
+      album_id: id,
+      trashed,
+    });
+    return {
+      archived: result.archived,
+      blocked: plan.blocked || [],
+      failed,
+      needsExport: false,
+    };
+  });
   ipcMain.handle("people:bootstrap", () => bridge.request("people.bootstrap"));
   ipcMain.handle("person:faces", async (_event, { personId }) =>
     registerFaceMedia(
@@ -476,14 +546,14 @@ app.whenReady().then(() => {
     if (!['index', 'analyze'].includes(kind)) throw new Error("Неизвестный тип операции");
     return startDatabaseJob(kind, Array.isArray(sources) ? sources : []);
   });
-  ipcMain.handle("layout:start", (_event, { runId, params }) =>
-    startDatabaseJob("layout", [], { runId: String(runId), params: params || {} }),
+  ipcMain.handle("layout:start", (_event, { albumId, params }) =>
+    startDatabaseJob("layout", [], { albumId: Number(albumId), params: params || {} }),
   );
-  ipcMain.handle("layout:preflight", (_event, { runId, params }) =>
-    bridge.request("layout.preflight", { run_id: String(runId), ...params }),
+  ipcMain.handle("layout:preflight", (_event, { albumId, params }) =>
+    bridge.request("layout.preflight", { ...params, album_id: Number(albumId) }),
   );
-  ipcMain.handle("layout:get", (_event, { runId }) =>
-    bridge.request("layout.get", { run_id: String(runId) }),
+  ipcMain.handle("layout:get", (_event, { albumId }) =>
+    bridge.request("layout.get", { album_id: Number(albumId) }),
   );
   ipcMain.handle("layout:templates", (_event, { orientation, photoCount }) =>
     bridge.request("layout.templates", { orientation, photo_count: Number(photoCount) }),
@@ -543,16 +613,17 @@ app.whenReady().then(() => {
       image_ids: Array.isArray(imageIds) ? imageIds.map(Number) : [],
     }),
   );
-  ipcMain.handle("layout:export", async (_event, { runId }) => {
+  ipcMain.handle("layout:export", async (_event, { albumId }) => {
     const result = await dialog.showOpenDialog({
       title: "Куда сохранить оригиналы фото из альбома",
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const exported = await bridge.request("layout.export", {
-      run_id: String(runId),
-      folder: path.resolve(result.filePaths[0]),
-    });
+    const exported = await bridge.request(
+      "layout.export",
+      { album_id: Number(albumId), folder: path.resolve(result.filePaths[0]) },
+      EXPORT_TIMEOUT_MS,
+    );
     shell.openPath(exported.folder);
     return exported;
   });

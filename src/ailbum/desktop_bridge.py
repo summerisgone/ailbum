@@ -5,23 +5,18 @@ import base64
 import json
 import sys
 import traceback
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageOps
-
+from ailbum import album_library, albums, archive, proxies
 from ailbum.database import (
     connect,
     create_person_from_face,
     database_summary,
     get_desktop_faces,
-    get_desktop_library,
     get_desktop_people,
     merge_people,
     name_person,
-    set_desktop_favorite,
-    set_desktop_target,
     set_face_person,
 )
 from ailbum.layout import editing, service, store
@@ -31,37 +26,25 @@ from ailbum.layout.templates import format_for, templates_for
 from ailbum.layout.types import LayoutParams
 
 
-def _face_thumbnail(database: Path, face_id: int, size: int = 240) -> dict[str, str]:
+def _library(database: Path, album_id: int | None) -> dict[str, Any]:
+    library = album_library.get_library(database, album_id)
+    photos = library["photos"]
     with connect(database) as connection:
-        face = connection.execute(
-            """
-            SELECT f.bbox_x, f.bbox_y, f.bbox_width, f.bbox_height, i.path
-            FROM faces AS f JOIN images AS i ON i.id = f.image_id
-            WHERE f.id = ?
-            """,
-            (face_id,),
-        ).fetchone()
-    if face is None:
-        raise ValueError(f"Face id does not exist: {face_id}")
-    with Image.open(Path(str(face["path"]))) as source:
-        image = ImageOps.exif_transpose(source).convert("RGB")
-        width = int(face["bbox_width"])
-        height = int(face["bbox_height"])
-        margin = round(max(width, height) * 0.2)
-        x = int(face["bbox_x"])
-        y = int(face["bbox_y"])
-        crop = image.crop(
-            (
-                max(0, x - margin),
-                max(0, y - margin),
-                min(image.width, x + width + margin),
-                min(image.height, y + height + margin),
-            )
+        hashes = {
+            int(r["id"]): r["sha256"]
+            for r in connection.execute("SELECT id, sha256 FROM images")
+        }
+    for photo in photos:
+        source = proxies.image_source(
+            database,
+            {
+                "path": photo["path"],
+                "sha256": hashes.get(int(photo["id"])),
+                "availability": photo["availability"],
+            },
         )
-        tile = ImageOps.fit(crop, (size, size), method=Image.Resampling.LANCZOS)
-        output = BytesIO()
-        tile.save(output, format="JPEG", quality=86, optimize=True)
-    return {"mime_type": "image/jpeg", "base64": base64.b64encode(output.getvalue()).decode()}
+        photo["media_path"] = str(source) if source is not None else None
+    return library
 
 
 def _layout_params(payload: dict[str, Any]) -> LayoutParams:
@@ -98,17 +81,17 @@ def _layout_templates(orientation: str, photo_count: int | None) -> list[dict[st
 
 def _dispatch_layout(database: Path, action: str, payload: dict[str, Any]) -> object:
     if action == "layout.preflight":
-        return service.preflight(database, str(payload["run_id"]), _layout_params(payload))
+        return service.preflight(database, int(payload["album_id"]), _layout_params(payload))
     if action == "layout.get":
         with connect(database) as connection:
-            return store.load_layout(connection, str(payload["run_id"]))
+            return store.load_layout(connection, int(payload["album_id"]))
     if action == "layout.templates":
         count = payload.get("photo_count")
         return _layout_templates(
             str(payload["orientation"]), int(count) if count is not None else None
         )
     if action == "layout.export":
-        return export_originals(database, str(payload["run_id"]), Path(str(payload["folder"])))
+        return export_originals(database, int(payload["album_id"]), Path(str(payload["folder"])))
     if action == "layout.parse_prompt":
         return editing.parse_prompt(str(payload.get("prompt") or ""))
     spread_id = int(payload["spread_id"])
@@ -154,18 +137,57 @@ def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
     if action == "database.summary":
         return database_summary(database)
     if action == "library.bootstrap":
-        return get_desktop_library(database, payload.get("run_id"))
+        value = payload.get("album_id")
+        return _library(database, int(value) if value is not None else None)
     if action == "favorite.set":
-        return set_desktop_favorite(
-            database,
-            str(payload["run_id"]),
-            int(payload["image_id"]),
-            bool(payload["favorite"]),
-        )
+        with connect(database) as connection:
+            return album_library.set_photo(
+                connection,
+                int(payload["album_id"]),
+                int(payload["image_id"]),
+                bool(payload["favorite"]),
+            )
     if action == "target.set":
-        return set_desktop_target(
-            database, str(payload["run_id"]), int(payload["target_count"])
+        with connect(database) as connection:
+            return album_library.set_target(
+                connection, int(payload["album_id"]), int(payload["target_count"])
+            )
+    if action == "selection.autofill":
+        with connect(database) as connection:
+            return album_library.autofill(connection, int(payload["album_id"]))
+    if action == "album.list":
+        with connect(database) as connection:
+            return albums.list_albums(connection)
+    if action == "album.status":
+        with connect(database) as connection:
+            return albums.set_status(
+                connection, int(payload["album_id"]), str(payload["status"])
+            )
+    if action == "album.rename":
+        with connect(database) as connection:
+            return albums.rename_album(
+                connection, int(payload["album_id"]), str(payload["title"])
+            )
+    if action == "album.delete":
+        with connect(database) as connection:
+            albums.delete_album(
+                connection, int(payload["album_id"]), bool(payload.get("forget_decisions"))
+            )
+        return {"deleted": True}
+    if action == "album.prepare_archive":
+        return archive.prepare_archive(database, int(payload["album_id"]))
+    if action == "album.complete_archive":
+        return archive.complete_archive(
+            database, int(payload["album_id"]), [str(p) for p in payload["trashed"]]
         )
+    if action == "album.confirm_missing":
+        return {"confirmed": archive.confirm_missing(
+            database, [int(i) for i in payload["image_ids"]]
+        )}
+    if action == "album.usage":
+        from ailbum import forget
+
+        return forget.usage(database)
     if action == "people.bootstrap":
         return get_desktop_people(database)
     if action == "person.faces":
@@ -187,7 +209,8 @@ def _dispatch(database: Path, action: str, payload: dict[str, Any]) -> object:
             database, int(payload["face_id"]), payload.get("name")
         )
     if action == "face.thumbnail":
-        return _face_thumbnail(database, int(payload["face_id"]))
+        data = proxies.face_thumbnail(database, int(payload["face_id"]))
+        return {"mime_type": "image/jpeg", "base64": base64.b64encode(data).decode()}
     if action.startswith("layout."):
         return _dispatch_layout(database, action, payload)
     if action == "ping":

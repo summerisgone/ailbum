@@ -81,6 +81,35 @@ def _append_face_features(
             )
 
 
+def _active_pairwise_model(database: Path | None):
+    if database is None:
+        return None
+    try:
+        from ailbum.database import connect
+        from ailbum.ranking import store
+
+        with connect(database) as connection:
+            return store.active_model(connection, "pairwise")
+    except (ImportError, AttributeError):
+        return None
+
+
+def _group_winner(
+    records: list[PhotoRecord], members: list[int], candidates: list[int], model
+) -> int:
+    if model is None:
+        return max(candidates, key=lambda item: records[item].quality)
+    from ailbum.ranking import features
+
+    order = sorted(members, key=lambda item: (-records[item].quality, item))
+    vectors = np.array(
+        [features.from_record(records[i], len(members), order.index(i)) for i in candidates]
+    )
+    scores = model.score(vectors)
+    best = max(range(len(candidates)), key=lambda k: (scores[k], records[candidates[k]].quality))
+    return candidates[best]
+
+
 def analyze_library(
     source: Path,
     output: Path,
@@ -278,6 +307,10 @@ def analyze_library(
         geometric_time_window_minutes=config.geometric_time_window_minutes,
     )
     similar_groups: list[dict[str, object]] = []
+    pairwise_model = _active_pairwise_model(database)
+    selection_model = (
+        f"pairwise:{getattr(pairwise_model, 'id', None)}" if pairwise_model is not None else "quality"
+    )
     for cluster_id, local_group in enumerate(groups, start=1):
         member_indices = [valid_indices[index] for index in local_group]
         if len(member_indices) > 1:
@@ -285,7 +318,7 @@ def analyze_library(
                 records[index].similar_cluster = cluster_id
         candidates = [index for index in member_indices if not records[index].is_blurry]
         if candidates:
-            best = max(candidates, key=lambda item: records[item].quality)
+            best = _group_winner(records, member_indices, candidates, pairwise_model)
             records[best].selected = True
         if len(member_indices) > 1:
             similar_groups.append(
@@ -404,6 +437,7 @@ def analyze_library(
         "semantic_error": semantic_analyzer.error,
         "semantic_device": semantic_analyzer.device,
         "feature_cache": cache_stats,
+        "selection_model": selection_model,
         "story_naming_backend": story_namer.backend,
         "story_naming_model": (
             story_namer.model if story_namer.backend == "lmstudio" else None

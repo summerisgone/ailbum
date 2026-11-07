@@ -6,13 +6,14 @@ import { LayoutWizard, type WizardParams } from "./LayoutWizard";
 import "./layout.css";
 
 type Props = {
-  runId: string;
+  albumId: number;
+  readOnly?: boolean;
   onError(message: string): void;
   onOpenPhotos(storyId: number | null): void;
   onSetFavorite(imageId: number, favorite: boolean): Promise<void>;
 };
 
-export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: Props) {
+export function LayoutSection({ albumId, readOnly = false, onError, onOpenPhotos, onSetFavorite }: Props) {
   const [layout, setLayout] = useState<Layout | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -22,7 +23,7 @@ export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: P
   const load = useCallback(() => {
     const id = ++loadId.current;
     window.ailbum
-      .getLayout(runId)
+      .getLayout(albumId)
       .then((next) => {
         if (id !== loadId.current) return;
         setLayout(next);
@@ -34,7 +35,7 @@ export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: P
         setLoaded(true);
         onError(String(reason));
       });
-  }, [runId, onError]);
+  }, [albumId, onError]);
 
   useEffect(() => {
     setLoaded(false);
@@ -58,7 +59,7 @@ export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: P
   const create = async (params: WizardParams) => {
     if (layout && !window.confirm("Заменить текущую раскладку?")) return;
     try {
-      setJob(await window.ailbum.startLayout(runId, params));
+      setJob(await window.ailbum.startLayout(albumId, params));
     } catch (reason) {
       onError(String(reason));
     }
@@ -90,9 +91,12 @@ export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: P
       {job.status === "error" && job.kind === "layout" && job.error && (
         <div className="layout-job error">{job.error}</div>
       )}
-      {layout && !wizardOpen ? (
+      {readOnly && !layout ? (
+        <div className="layout-wizard-wrap"><header className="layout-heading"><h2>Альбом заказан - раскладка недоступна</h2></header></div>
+      ) : layout && !wizardOpen ? (
         <LayoutEditor
           layout={layout}
+          readOnly={readOnly}
           onChange={onChange}
           onRecreate={onRecreate}
           onError={onError}
@@ -106,7 +110,7 @@ export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: P
             {layout && <p>Новая раскладка заменит текущую.</p>}
           </header>
           <LayoutWizard
-            runId={runId}
+            albumId={albumId}
             busy={running}
             replacing={layout != null}
             onCreate={create}

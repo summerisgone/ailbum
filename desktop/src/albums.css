@@ -1,0 +1,19 @@
+.album-manager { display: grid; gap: 22px; padding: 4px 0; }
+.album-group h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: #343936; }
+.album-group h3 span { color: #8a908b; font-weight: 500; margin-left: 4px; }
+.album-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.album-empty { margin: 0; font-size: 11px; color: #8a908b; }
+.album-card { padding: 12px 14px; border: 1px solid #e0e3df; border-radius: 12px; background: #fff; display: grid; gap: 6px; }
+.album-card.active { border-color: #303730; box-shadow: inset 3px 0 #e7f665; }
+.album-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.album-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-title-input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid #c9cdc8; border-radius: 8px; }
+.album-count { font-size: 11px; color: #6b716c; white-space: nowrap; }
+.album-meta { font-size: 11px; color: #8a908b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.album-note { font-size: 11px; color: #4c524e; }
+.album-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.album-actions button { height: 30px; padding: 0 12px; border: 1px solid #d5d9d4; border-radius: 9px; background: #f6f7f5; cursor: pointer; font-size: 11px; font-weight: 600; }
+.album-actions button:hover:not(:disabled) { background: #eceeea; }
+.album-actions button:disabled { cursor: default; opacity: .55; }
+.album-actions button.danger { color: #a3342b; }
+.album-usage { display: flex; flex-wrap: wrap; gap: 6px 18px; padding-top: 12px; border-top: 1px solid #e0e3df; font-size: 11px; color: #6b716c; }

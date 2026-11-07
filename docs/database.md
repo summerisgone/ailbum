@@ -19,7 +19,10 @@
 - все прочитанные секции EXIF (`ifd0`, `exif`, `gps`, `interop`, `ifd1`) в JSON;
 - контейнерные метаданные Pillow в JSON; бинарные ICC/EXIF-блоки представлены
   размером и SHA-256, а разобранные EXIF-значения сохраняются полностью;
-- ошибка извлечения и признак отсутствующего после повторной индексации файла.
+- ошибка извлечения и `availability`: `present` (файл на месте), `missing` (файла нет,
+  причина неизвестна) или `archived` (оригинал сознательно удалён). Индексация переводит
+  `present` в `missing`, но никогда не трогает `archived`; `missing` и `archived` кадры
+  не участвуют в новом CV-анализе и экспорте оригиналов.
 
 ### `analysis_runs`
 
@@ -79,19 +82,32 @@ Desktop-редактор изменяет именно `faces.person_id`. При
 Существующие базы более ранних версий обновляются автоматически без удаления
 истории анализов.
 
-### `photo_selections`
+### `albums`, `album_sources`, `album_photos`
 
-Ручной выбор для альбома, привязанный к конкретному запуску анализа. Он хранится
-отдельно от рекомендации `photo_analysis.selected`: UI может добавлять и удалять
-кадры, не переписывая результат анализатора. Поле `position` сохраняет порядок
-горизонтальной ленты. При первом открытии запуска таблица один раз заполняется
-автоматически рекомендованными кадрами; дальнейшие ручные изменения сохраняются.
+Альбом - самостоятельная сущность. `albums`: `public_id` (UUID), `title`, `purpose`
+(`photobook_demo` | `print`), `status` (`draft` -> `ordered` -> `archived`),
+`target_count` (по умолчанию 24), `run_id` (текущий запуск анализа, `ON DELETE SET NULL`),
+`ordered_at`, `archived_at`. `album_sources` - каталоги, из которых собран альбом.
+`album_photos(album_id, image_id, position, added_at)` - ручной выбор; ключ
+`(album_id, image_id)`, поэтому повторный анализ не сбрасывает выбор. Рекомендация
+`photo_analysis.selected` хранится отдельно. При первом открытии альбома с запуском и
+без выбора он один раз заполняется ровно `target_count` кадрами; дальнейшие ручные
+изменения сохраняются. Повторный `analyze` того же каталога прикрепляет новый запуск к
+черновику с теми же источниками, заказанные и архивные альбомы не меняются.
 
-### `desktop_run_settings`
+### `album_exports`
 
-Настройки интерфейса для запуска анализа. Хранит целевое количество фото и флаг
-первичной инициализации ручного выбора. База предыдущих версий обновляется до
-версии 8 автоматически.
+Журнал экспортов оригиналов: `album_id`, `layout_id`, `selection_hash`, `folder`,
+`count`, `missing_json`, `exported_at`. Архивация требует экспорта с текущим
+`selection_hash` и пустым `missing_json`.
+
+### `selection_events`, `ranking_models`
+
+`selection_events` - журнал решений: `action` (`add` | `remove` | `seed`), `source`
+(`auto` | `manual` | `backfill`), `run_id`, `image_id`. Событие пишется только при
+реальном изменении. `ranking_models` - обученные ранкеры (`pairwise` | `pointwise`),
+`feature_version`, веса в `model_json`, метрики и флаг `active`. Подробнее - в
+`docs/adr/0002-learned-photo-selection.md`.
 
 ### `image_object_scans`
 
@@ -101,14 +117,37 @@ Desktop-редактор изменяет именно `faces.person_id`. При
 
 ### `layouts`, `layout_spreads`, `layout_placements`
 
-Раскладка альбома: одна на запуск анализа (`layouts.run_id` уникален), новая заменяет
-прежнюю. `layouts` хранит параметры, `selection_hash` (SHA-256 отсортированных
-`image_id` выбора; несовпадение с текущим выбором помечает раскладку устаревшей),
-неразмещённые кадры и предупреждения. `layout_spreads` - развороты по порядку
-(`position`) с шаблоном и сюжетами. `layout_placements` - кадр в ячейке шаблона, окно
-кропа в долях повёрнутого кадра, `fit`, предупреждения и `replaced_image_id`, если
-вместо выбранного кадра поставлен похожий. Все таблицы удаляются каскадом вместе с
-запуском. База версии 10 обновляется до версии 11 автоматически.
+Раскладка альбома: одна на альбом (`layouts.album_id` уникален, `ON DELETE CASCADE`),
+новая заменяет прежнюю. `run_id` - обычная колонка: из какого анализа взяты факты.
+`prompt` хранит текст пожеланий. `layouts` хранит параметры, `selection_hash` (SHA-256
+отсортированных `image_id` из `album_photos`; несовпадение с текущим выбором помечает
+раскладку устаревшей), неразмещённые кадры и предупреждения. `layout_spreads` -
+развороты по порядку (`position`) с шаблоном и сюжетами. `layout_placements` - кадр в
+ячейке шаблона, окно кропа в долях повёрнутого кадра, `fit`, предупреждения и
+`replaced_image_id`, если вместо выбранного кадра поставлен похожий.
+
+### Миграция v11 -> v12 и внешние ключи
+
+Версия схемы 12. Миграция определяется по форме: если в `images` есть колонка `missing`,
+таблицы пересобираются (create/copy/drop/rename при `foreign_keys=OFF`, затем
+`foreign_key_check`). Каждый запуск анализа с выбором или настройками становится
+черновиком: название - имя каталога источника, `photo_selections` переезжает в
+`album_photos`, `desktop_run_settings.target_count` - в `albums.target_count`, раскладка
+получает `album_id`, разница между итоговым выбором и рекомендацией записывается как
+события `backfill`. `images.missing=1` становится `availability='missing'`.
+
+Внешние ключи на `images(id)` из `photo_analysis`, `faces`, `album_photos`,
+`layout_placements` и `selection_events` - `ON DELETE RESTRICT`: запись об изображении
+нельзя удалить, пока на неё что-то ссылается. Исключение - `image_object_scans` (CASCADE).
+Ailbum никогда не удаляет оригиналы насовсем: только в Корзину.
+
+### Прокси и кэш
+
+Рядом с файлом базы: `proxies/photos/<sha256>.jpg` (длинная сторона 1600, JPEG q=82,
+с учётом EXIF-ориентации) и `proxies/faces/<face id>.jpg` (квадрат 240). Для
+`archived` и `missing` кадров UI и раскладка берут изображение из прокси. Кэш признаков
+`feature-cache/*/<sha256>.npz` удаляется при архивации, если нет другого present-кадра
+с тем же хэшем.
 
 ## Команды
 
@@ -151,6 +190,42 @@ uv run ailbum people merge 3 8 12
 
 ```bash
 uv run ailbum people compose 3 --output ./output/people/anna.jpg
+```
+
+Альбомы:
+
+```bash
+uv run ailbum album list
+uv run ailbum album show 1
+uv run ailbum album order 1
+uv run ailbum album reopen 1
+uv run ailbum album export 1 --folder ./export
+uv run ailbum album archive 1
+uv run ailbum album delete 1 --forget-decisions
+```
+
+`order` отмечает альбом заказанным, `reopen` возвращает его в работу. `export`
+копирует оригиналы альбома в папку и пишет запись в `album_exports`. `archive`
+освобождает место: если нет экспорта с текущим выбором, печатает «Нужен экспорт» и
+завершается с ошибкой; иначе строит прокси, перечисляет заблокированные кадры с
+причиной (например, фото входит в черновик), переносит оригиналы в Корзину и помечает
+их `archived`. `--yes` отключает подтверждение. Черновик удаляется без флагов,
+заказанный и архивный альбомы - только с `--forget-decisions`.
+
+Забыть накопленные знания (без `--yes` печатается только план) и посмотреть размер данных:
+
+```bash
+uv run ailbum forget --album 1
+uv run ailbum forget --source ./data --yes
+uv run ailbum db usage
+```
+
+Обучаемый выбор фото:
+
+```bash
+uv run ailbum ranking status
+uv run ailbum ranking train
+uv run ailbum ranking evaluate
 ```
 
 Другой файл базы можно указать во всех командах через

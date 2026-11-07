@@ -1,6 +1,8 @@
 export type Photo = {
   id: number;
   path: string;
+  media_path: string | null;
+  availability: "present" | "missing" | "archived";
   file_name: string;
   width: number | null;
   height: number | null;
@@ -58,8 +60,42 @@ export type Story = {
   naming_model: string | null;
 };
 
+export type Album = {
+  id: number;
+  public_id: string;
+  title: string;
+  purpose: "photobook_demo" | "print";
+  status: "draft" | "ordered" | "archived";
+  target_count: number;
+  run_id: string | null;
+  sources: string[];
+  photo_count: number;
+  ordered_at: string | null;
+  archived_at: string | null;
+  updated_at: string;
+};
+
+export type Usage = {
+  database_bytes: number;
+  proxies_bytes: number;
+  feature_cache_bytes: number;
+  images: { present: number; missing: number; archived: number };
+};
+
+export type ArchiveResult =
+  | { cancelled: true }
+  | { needsExport: true; blocked: { image_id: number; reason: string }[] }
+  | {
+      archived: number;
+      blocked: { image_id: number; reason: string }[];
+      failed: string[];
+      needsExport: false;
+    };
+
 export type Library = {
   database: string;
+  album: Album | null;
+  albums: Album[];
   run: AnalysisRun | null;
   target_count: number;
   selected_count: number;
@@ -175,7 +211,8 @@ export type LayoutSpread = {
 
 export type Layout = {
   id: number;
-  run_id: string;
+  run_id: string | null;
+  album_id: number;
   orientation: "vertical" | "horizontal";
   spread_count: number;
   min_photos: number;
@@ -189,7 +226,7 @@ export type Layout = {
 };
 
 export type FavoriteResult = {
-  run_id: string;
+  album_id: number;
   image_id: number;
   favorite: boolean;
   selected_count: number;
@@ -246,9 +283,17 @@ declare global {
   interface Window {
     ailbum: {
       platform: string;
-      bootstrap(): Promise<Library>;
-      setFavorite(runId: string, imageId: number, favorite: boolean): Promise<FavoriteResult>;
-      setTarget(runId: string, targetCount: number): Promise<{ target_count: number }>;
+      bootstrap(albumId?: number): Promise<Library>;
+      setFavorite(albumId: number, imageId: number, favorite: boolean): Promise<FavoriteResult>;
+      setTarget(albumId: number, targetCount: number): Promise<{ target_count: number }>;
+      autofill(albumId: number): Promise<unknown>;
+      listAlbums(): Promise<Album[]>;
+      setAlbumStatus(albumId: number, status: Album["status"]): Promise<Album>;
+      renameAlbum(albumId: number, title: string): Promise<Album>;
+      deleteAlbum(albumId: number, forgetDecisions: boolean): Promise<unknown>;
+      archiveAlbum(albumId: number): Promise<ArchiveResult>;
+      confirmMissing(imageIds: number[]): Promise<number>;
+      getUsage(): Promise<Usage>;
       getPeople(): Promise<PeopleLibrary>;
       getFaces(personId: number | null): Promise<FaceCollection>;
       setPersonName(personId: number, name: string): Promise<unknown>;
@@ -264,10 +309,10 @@ declare global {
       getDatabaseJob(): Promise<DatabaseJob>;
       cancelDatabaseJob(): Promise<DatabaseJob>;
       onDatabaseJob(listener: (job: DatabaseJob) => void): () => void;
-      layoutPreflight(runId: string, params: LayoutParams): Promise<LayoutPreflight>;
-      getLayout(runId: string): Promise<Layout | null>;
+      layoutPreflight(albumId: number, params: LayoutParams): Promise<LayoutPreflight>;
+      getLayout(albumId: number): Promise<Layout | null>;
       getLayoutTemplates(orientation: string, photoCount: number): Promise<LayoutTemplateInfo[]>;
-      startLayout(runId: string, params: LayoutParams): Promise<DatabaseJob>;
+      startLayout(albumId: number, params: LayoutParams): Promise<DatabaseJob>;
       getLayoutAlternatives(spreadId: number, cellIndex: number): Promise<LayoutAlternative[]>;
       setLayoutPhoto(spreadId: number, cellIndex: number, imageId: number): Promise<Layout>;
       swapLayoutCells(spreadId: number, cellA: number, cellB: number): Promise<Layout>;
@@ -282,7 +327,7 @@ declare global {
       getLayoutVariants(spreadId: number): Promise<LayoutVariant[]>;
       applyLayoutVariant(spreadId: number, templateId: string, imageIds: number[]): Promise<Layout>;
       parseLayoutPrompt(prompt: string): Promise<LayoutPromptInfo>;
-      exportLayout(runId: string): Promise<{ folder: string; count: number; missing: string[] } | null>;
+      exportLayout(albumId: number): Promise<{ folder: string; count: number; missing: string[] } | null>;
       mediaUrl(imageId: number): string;
       originalUrl(imageId: number): string;
       faceUrl(faceId: number): string;
