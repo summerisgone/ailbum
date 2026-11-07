@@ -1,6 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { LayoutPreflight } from "../types";
+import { usePromptLabels } from "./usePromptLabels";
 
 export type WizardParams = {
   orientation: "vertical" | "horizontal";
@@ -8,6 +9,7 @@ export type WizardParams = {
   min_photos: number;
   max_photos: number;
   assistant: "auto" | "off";
+  prompt: string;
 };
 
 type Props = {
@@ -29,6 +31,8 @@ export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onErr
   const [minPhotos, setMinPhotos] = useState("3");
   const [maxPhotos, setMaxPhotos] = useState("6");
   const [assistant, setAssistant] = useState<WizardParams["assistant"]>("auto");
+  const [prompt, setPrompt] = useState("");
+  const labels = usePromptLabels(prompt);
   const [preflight, setPreflight] = useState<LayoutPreflight | null>(null);
   const [loading, setLoading] = useState(false);
   const requestId = useRef(0);
@@ -69,7 +73,7 @@ export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onErr
 
   const create = () => {
     if (!ready) return;
-    onCreate({ orientation, spread_count: spreadCount, min_photos: min, max_photos: max, assistant });
+    onCreate({ orientation, spread_count: spreadCount, min_photos: min, max_photos: max, assistant, prompt: prompt.trim() });
   };
 
   return (
@@ -136,6 +140,24 @@ export function LayoutWizard({ runId, busy, replacing, onCreate, onCancel, onErr
             <option value="off">Выключен</option>
           </select>
         </label>
+      </section>
+
+      <section className="layout-step layout-wish">
+        <h3>Пожелание сборщику</h3>
+        <textarea
+          className="layout-prompt"
+          rows={2}
+          value={prompt}
+          placeholder="Например: приоритет лицам и крупным планам, меньше пейзажей"
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+        {prompt.trim() && (
+          <p className={`layout-prompt-note${labels.length ? "" : " warn"}`}>
+            {labels.length
+              ? `Понято: ${labels.join(", ")}. Текст пожелания также получит AI-редактор.`
+              : "Сборщик не распознал пожелание: укажите лица, крупные планы или пейзажи. AI-редактор получит текст как есть."}
+          </p>
+        )}
       </section>
 
       <section className="layout-summary">

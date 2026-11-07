@@ -41,3 +41,4 @@ class LayoutParams:
     min_photos: int
     max_photos: int
     assistant: str = "auto"
+    prompt: str = ""

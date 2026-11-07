@@ -42,3 +42,7 @@
 .layout-progress { width: 100%; height: 5px; overflow: hidden; border-radius: 8px; background: rgba(107, 119, 55, .14); }
 .layout-progress span { height: 100%; display: block; border-radius: inherit; background: #879640; transition: width .2s; }
 .layout-progress.indeterminate span { width: 34%; animation: job-progress 1.2s ease-in-out infinite; }
+.layout-wish { grid-column: 1 / -1; }
+.layout-wish h3 { margin-top: 0; }
+.layout-prompt-note { margin: 8px 0 0; color: #566128; font-size: 11px; }
+.layout-prompt-note.warn { color: #8a6a1f; }

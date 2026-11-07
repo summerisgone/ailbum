@@ -8,9 +8,11 @@ import "./layout.css";
 type Props = {
   runId: string;
   onError(message: string): void;
+  onOpenPhotos(storyId: number | null): void;
+  onSetFavorite(imageId: number, favorite: boolean): Promise<void>;
 };
 
-export function LayoutSection({ runId, onError }: Props) {
+export function LayoutSection({ runId, onError, onOpenPhotos, onSetFavorite }: Props) {
   const [layout, setLayout] = useState<Layout | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -89,7 +91,14 @@ export function LayoutSection({ runId, onError }: Props) {
         <div className="layout-job error">{job.error}</div>
       )}
       {layout && !wizardOpen ? (
-        <LayoutEditor layout={layout} onChange={onChange} onRecreate={onRecreate} onError={onError} />
+        <LayoutEditor
+          layout={layout}
+          onChange={onChange}
+          onRecreate={onRecreate}
+          onError={onError}
+          onOpenPhotos={onOpenPhotos}
+          onSetFavorite={onSetFavorite}
+        />
       ) : (
         <div className="layout-wizard-wrap">
           <header className="layout-heading">

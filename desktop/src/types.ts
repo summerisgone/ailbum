@@ -98,6 +98,7 @@ export type LayoutParams = {
   min_photos: number;
   max_photos: number;
   assistant?: "auto" | "off";
+  prompt?: string;
 };
 
 export type LayoutPreflight = {
@@ -122,7 +123,26 @@ export type LayoutAlternative = {
   fit: number;
   warnings: string[];
   in_selection: boolean;
+  placed: { spread_id: number; position: number; cell_index: number } | null;
+  similar: boolean;
 };
+
+export type LayoutVariant = {
+  template_id: string;
+  score: number;
+  image_ids: number[];
+  cells: {
+    index: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    image_id: number;
+    crop: { x: number; y: number; w: number; h: number };
+  }[];
+};
+
+export type LayoutPromptInfo = { weights: Record<string, number>; labels: string[] };
 
 export type LayoutPlacement = {
   image_id: number;
@@ -257,7 +277,11 @@ declare global {
         cellIndex: number,
         crop: { x: number; y: number; w: number; h: number },
       ): Promise<Layout>;
-      recomposeLayoutSpread(spreadId: number): Promise<Layout>;
+      recomposeLayoutSpread(spreadId: number, prompt?: string): Promise<Layout>;
+      getLayoutSimilar(spreadId: number, cellIndex: number): Promise<LayoutAlternative[]>;
+      getLayoutVariants(spreadId: number): Promise<LayoutVariant[]>;
+      applyLayoutVariant(spreadId: number, templateId: string, imageIds: number[]): Promise<Layout>;
+      parseLayoutPrompt(prompt: string): Promise<LayoutPromptInfo>;
       mediaUrl(imageId: number): string;
       originalUrl(imageId: number): string;
       faceUrl(faceId: number): string;

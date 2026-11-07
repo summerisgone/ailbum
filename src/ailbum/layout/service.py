@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ailbum.database import connect
+from ailbum.layout import preferences
 from ailbum.layout.allocation import StoryGroup, allocate_spreads
 from ailbum.layout.assistant import LayoutAssistant
 from ailbum.layout.composer import compose_group
@@ -49,6 +50,7 @@ def generate(
             detector,
             lambda done, total: report("Анализ объектов", "Анализ объектов", done, total),
         )
+        pool = preferences.apply(pool, preferences.parse(params.prompt))
         groups, members = _group_pool(connection, run_id, pool)
         summary = _summary(params, len(pool), groups)
         if summary["errors"]:
@@ -113,7 +115,9 @@ def _refine(
         variants = [spread, *spread.alternatives]
         if len(variants) < 2:
             return spread
-        choice = assistant.choose(variants, paths, params.orientation, title)
+        choice = assistant.choose(
+            variants, paths, params.orientation, title, params.prompt
+        )
     except Exception:  # noqa: BLE001 - the assistant must never break generation
         return spread
     if choice is None or not 0 <= choice.index < len(variants):

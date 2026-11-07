@@ -10,6 +10,7 @@ from typing import Any
 
 from ailbum.catalog import index_library
 from ailbum.layout import service
+from ailbum.layout.preferences import MAX_PROMPT
 from ailbum.layout.types import LayoutParams
 from ailbum.models import PipelineConfig
 from ailbum.pipeline import analyze_library
@@ -138,6 +139,7 @@ def layout_params(raw: str) -> LayoutParams:
         int(values["min_photos"]),
         int(values["max_photos"]),
         str(values.get("assistant", "auto")),
+        str(values.get("prompt") or "")[:MAX_PROMPT],
     )
 
 

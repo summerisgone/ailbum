@@ -25,6 +25,7 @@ from ailbum.database import (
     set_face_person,
 )
 from ailbum.layout import editing, service, store
+from ailbum.layout.preferences import MAX_PROMPT
 from ailbum.layout.templates import format_for, templates_for
 from ailbum.layout.types import LayoutParams
 
@@ -69,6 +70,7 @@ def _layout_params(payload: dict[str, Any]) -> LayoutParams:
         int(payload["min_photos"]),
         int(payload["max_photos"]),
         str(payload.get("assistant", "auto")),
+        str(payload.get("prompt") or "")[:MAX_PROMPT],
     )
 
 
@@ -104,7 +106,20 @@ def _dispatch_layout(database: Path, action: str, payload: dict[str, Any]) -> ob
         return _layout_templates(
             str(payload["orientation"]), int(count) if count is not None else None
         )
+    if action == "layout.parse_prompt":
+        return editing.parse_prompt(str(payload.get("prompt") or ""))
     spread_id = int(payload["spread_id"])
+    if action == "layout.similar":
+        return editing.similar(database, spread_id, int(payload["cell_index"]))
+    if action == "layout.variants":
+        return editing.variants(database, spread_id)
+    if action == "layout.apply_variant":
+        return editing.apply_variant(
+            database,
+            spread_id,
+            str(payload["template_id"]),
+            [int(i) for i in payload["image_ids"]],
+        )
     if action == "layout.alternatives":
         return editing.alternatives(database, spread_id, int(payload["cell_index"]))
     if action == "layout.set_photo":
@@ -122,7 +137,9 @@ def _dispatch_layout(database: Path, action: str, payload: dict[str, Any]) -> ob
             database, spread_id, int(payload["cell_index"]), dict(payload["crop"])
         )
     if action == "layout.recompose_spread":
-        return editing.recompose_spread(database, spread_id)
+        return editing.recompose_spread(
+            database, spread_id, str(payload.get("prompt") or "")[:MAX_PROMPT]
+        )
     raise ValueError(f"Unknown desktop action: {action}")
 
 

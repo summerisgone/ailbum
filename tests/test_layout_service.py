@@ -123,7 +123,7 @@ class FakeAssistant:
         self.connect_calls += 1
         return self.connected
 
-    def choose(self, variants, paths, orientation, story_title):
+    def choose(self, variants, paths, orientation, story_title, wish=""):
         self.choose_calls += 1
         self.titles.append(story_title)
         if self.raises:
