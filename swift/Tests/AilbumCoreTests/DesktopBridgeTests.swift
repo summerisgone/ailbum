@@ -205,4 +205,43 @@ nonisolated(unsafe) private var calls: [(String, [Any])] = []
         #expect(x >= 0 && x <= 1 && w > 0 && w <= 1)
         #expect(items[0]["photo_count"] == 3)
     }
+    @Test func badRequestsNeverKillBridge() throws {
+        let db = try bridgeTempDB()
+        let bad = [
+            "", "{bad", "[1]", "null", #"{"id":3}"#, #"{"id":4,"action":"favorite.set","payload":{}}"#,
+            #"{"id":5,"action":"ping","payload":[1]}"#, #"{"id":6,"action":"layout.nope","payload":{"spread_id":1}}"#,
+            #"{"id":8,"action":"person.faces","payload":{"person_id":"x"}}"#,
+        ]
+        for line in bad {
+            let out = try JSONValue.parse(DesktopBridge.respond(database: db, line: line))
+            #expect(out["error"]?.stringValue?.isEmpty == false && out["result"] == nil, "\(line)")
+        }
+        #expect(try JSONValue.parse(DesktopBridge.respond(database: db, line: #"{"id":4,"action":"favorite.set","payload":{}}"#))["id"] == 4)
+        #expect(DesktopBridge.respond(database: db, line: #"{"id":9,"action":"ping"}"#) == #"{"id":9,"result":{"ok":true}}"#)
+    }
+
+    @Test func thumbnailFailureBecomesError() throws {
+        let db = try bridgeTempDB()
+        struct Boom: Error {}
+        DesktopBridge.faceThumbnailOverride = { _, _ in throw Boom() }
+        defer { DesktopBridge.faceThumbnailOverride = nil }
+        let out = try JSONValue.parse(DesktopBridge.respond(
+            database: db, line: #"{"id":1,"action":"face.thumbnail","payload":{"face_id":1}}"#))
+        #expect(out["id"] == 1 && out["error"] != nil)
+    }
+
+    @Test func recomposePromptCutAndDefault() throws {
+        guard installLayoutFakes() else { return }
+        defer { DesktopBridge.layoutHook = nil; calls = [] }
+        calls = []
+        let db = try bridgeTempDB()
+        let long = String(repeating: "я", count: 600)
+        _ = try call(db, "layout.recompose_spread", ["spread_id": 1, "prompt": .string(long)])
+        _ = try call(db, "layout.recompose_spread", ["spread_id": 1])
+        #expect((calls[0].1[2] as? String)?.unicodeScalars.count == 500)
+        #expect(calls[1].1[2] as? String == "")
+        // parse_prompt is not cut.
+        let parsed = try call(db, "layout.parse_prompt", ["prompt": .string(long)])
+        #expect(parsed.objectValue != nil)
+    }
 }
