@@ -1,0 +1,13 @@
+{"file": "", "line": 0, "context": "verified: seam T1↔T4", "agent": "pt_review", "kind": "verified", "time": "18:04:52"}
+{"file": "", "line": 0, "context": "verified: seam T1↔T2", "agent": "pt_review", "kind": "verified", "time": "18:06:47"}
+{"file": "docs/plans/2026-11-08-swift-metal-app.md", "line": 109, "context": "seam T3↔T2: T3 Produces: JobRunner.defaultExecutable: no module found (file missing)", "agent": "pt_review", "kind": "exception", "confidence": "high", "resolution": "open", "time": "18:06:47"}
+{"file": "", "line": 0, "context": "verified: seam T1↔T4", "agent": "pt_review", "kind": "verified", "time": "18:08:20"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T6", "agent": "pt_review", "kind": "verified", "time": "18:08:25"}
+{"file": "", "line": 0, "context": "verified: seam T1↔T2", "agent": "pt_review", "kind": "verified", "time": "18:08:51"}
+{"file": "docs/plans/2026-11-08-swift-metal-app.md", "line": 109, "context": "seam T3↔T2: T3 Produces: JobRunner.defaultExecutable: no module found (file missing)", "agent": "pt_review", "kind": "exception", "confidence": "high", "resolution": "open", "time": "18:08:51"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T6", "agent": "pt_review", "kind": "verified", "time": "18:08:51"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T9", "agent": "pt_review", "kind": "verified", "time": "18:08:51"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T7", "agent": "pt_review", "kind": "verified", "time": "18:08:56"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T5", "agent": "pt_review", "kind": "verified", "time": "18:09:16"}
+{"file": "docs/plans/2026-11-08-swift-metal-app.md", "line": 124, "context": "seam T4↔T5: T4 Produces: PhotoGrouping.columnCount: no module found (file missing)", "agent": "pt_review", "kind": "exception", "confidence": "high", "resolution": "open", "time": "18:09:16"}
+{"file": "", "line": 0, "context": "verified: seam T2↔T8", "agent": "pt_review", "kind": "verified", "time": "18:09:44"}
