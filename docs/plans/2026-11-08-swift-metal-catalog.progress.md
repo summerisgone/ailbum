@@ -1,0 +1,55 @@
+- start cc7a9c1f3b03ac6a2e0b07147195660f7fef53ad
+- unblocked: dispatched T0 T1 T2 T3 T4 T6 T7 T11 at 01:07:13; waiting on fixes: T5 T8 T9 T10
+- Ruling: T5 and T8 drop Consumes for producers whose e.g. lines do not name the function (T3, T4, T6 frozen); listed in Notes - cost: seam check skips them
+- Ruling: accept plan above 15k chars, excess in frozen blocks
+- unblocked: dispatched T5 T8 at 01:08:06; T9 T10 wait for T7 T8
+- tests fast passed=0 failed=1 skipped=0 seconds=2.4
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=0 failed=1 skipped=0 seconds=1.0
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=0 failed=1 skipped=0 seconds=1.0
+- tests fast passed=0 failed=1 skipped=0 seconds=2.5
+- tests fast passed=0 failed=1 skipped=0 seconds=1.5
+- tests fast passed=0 failed=1 skipped=0 seconds=0.9
+- tests fast passed=0 failed=1 skipped=0 seconds=0.9
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=0 failed=1 skipped=0 seconds=2.1
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=0 failed=1 skipped=0 seconds=1.7
+- tests fast passed=0 failed=1 skipped=0 seconds=1.7
+- tests fast passed=0 failed=1 skipped=0 seconds=2.2
+- tests fast passed=0 failed=1 skipped=0 seconds=3.6
+- tests fast passed=0 failed=1 skipped=0 seconds=3.8
+- Ruling: T2 indexMetadata returns Python keys images/available/errors (plan e.g. "indexed" was wrong) - Python binds - cost: none
+- Ruling: newRunId is uuid4 36-char hyphenated, T7 told not to assert 32 hex - Python parity - cost: none
+- T2 DONE, commit held until T1 (Metadata) lands so the tree builds
+- tests fast passed=0 failed=1 skipped=0 seconds=2.9
+- tests fast passed=0 failed=1 skipped=0 seconds=3.3
+- tests fast passed=0 failed=1 skipped=0 seconds=4.2
+- tests fast passed=227 failed=2 skipped=0 seconds=9.6
+- tests fast passed=227 failed=2 skipped=0 seconds=9.3
+- tests fast passed=227 failed=2 skipped=0 seconds=15.3
+- tests fast passed=227 failed=2 skipped=0 seconds=17.1
+- Ruling: plan e.g. distanceKm (0,0)-(0,1) wrong; Python treats (0,0) as missing GPS -> nil - parity - none
+- tests fast passed=227 failed=2 skipped=0 seconds=14.6
+- Ruling: Stories.detect non-throwing per Produces; Python ValueError arg checks dropped (callers pass constants) - cost: bad config silently accepted
+- tests fast passed=229 failed=0 skipped=0 seconds=7.7
+- Ruling: AnalysisStore.save does not write face.databaseId/person ids back to caller values (Swift value types; DB rows match Python) - cost: 4b pipeline must re-read ids from DB if it needs them
+- Ruling: config_json/summary_json keys sorted (Swift dict order) - JSON consumers are key-based - cost: byte-diff vs Python rows only
+- unblocked: dispatched T9 (agent ae4afab) T10 (agent a6c691a) at 01:14:18; waiting on T6
+- tests fast passed=234 failed=0 skipped=0 seconds=9.5
+- Ruling: blob columns -> null in query JSON (Python returns bytes, unusable over JSON bridge anyway) - cost: none for UI
+- tests fast passed=241 failed=0 skipped=0 seconds=9.5
+- Ruling: contact sheet uses Helvetica 14 + CG interpolation, not Pillow bitmap font/LANCZOS - visual artifact only, layout numbers match - cost: pixel diff vs Python sheets
+- tests fast passed=241 failed=0 skipped=0 seconds=9.3
+- Ruling: StoryNamer.init/refine throw (Python raises ValueError/RuntimeError; plan Produces omitted throws) - cost: none, consumer T8 already uses try
+- Ruling: backend "off" alias for "rules" kept (plan example used it) - cost: one extra accepted value vs Python
+- tests full passed=241 failed=0 skipped=0 seconds=6.3
+- tests fast passed=248 failed=0 skipped=0 seconds=8.6
+- Ruling: parseTime stricter than fromisoformat (hour-only, week dates, comma fractions rejected) - DB times are written by ailbum itself in isoformat - cost: odd EXIF-derived strings drop taken_at
+- Ruling: symlinked single-file source resolution differs from Python - edge case, re-analysis anyway - cost: duplicate path row
+- tests full passed=248 failed=0 skipped=0 seconds=6.3
+- tests full passed=237 failed=0 skipped=11 seconds=38.5
+- tests full passed=248 failed=0 skipped=0 seconds=6.4
+- tests full passed=248 failed=0 skipped=0 seconds=6.4 (exit 0, models linked into worktree; without models 237 passed/11 skipped)
+- Ruling: phase 4a final-review findings are all stale incidents: Catalog.newRunId/utcNow are public statics at Indexing.swift:6,9; testSaveAnalysisRowsMatchPython and testResaveCreatesNewRunAndKeepsEarlierRows exist in AnalysisStoreTests.swift and pass; full run exits 0 so the fatalError incidents are from earlier red runs; no utcNow test added since Python has none (port rule) - cost: none
