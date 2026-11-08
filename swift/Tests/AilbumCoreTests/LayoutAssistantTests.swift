@@ -217,3 +217,15 @@ func laTimeoutReturnsNone(kind: Int) throws {
         transport: { _ in try JSONSerialization.data(withJSONObject: ["data": [Any]()]) })
     #expect(a.connect() == false)
 }
+
+// Python str.strip() also strips \x1c-\x1f; golden: ' \x1cA\x1d '.strip() == 'A'.
+@Test func laPyStripMatchesPython() throws {
+    #expect(LayoutAssistant.pyStrip(" \u{1c}A\u{1d} ") == "A")
+    #expect(LayoutAssistant.pyStrip("\u{1c}\u{1d}") == "")
+    #expect(LayoutAssistant.parseChoice(#"{"choice":"\u001cB\u001d"}"#, 3)?.index == 1)
+    let (variants, paths) = try laThree()
+    let calls = LaCalls()
+    let a = laAssistant(#"{"choice":"A"}"#, calls: calls)
+    _ = a.choose(variants, paths: paths, orientation: "vertical", storyTitle: "t", wish: "\u{1c}\u{1d}")
+    #expect(try !laTexts(calls.requests[0]).text.contains("Пожелание"))
+}

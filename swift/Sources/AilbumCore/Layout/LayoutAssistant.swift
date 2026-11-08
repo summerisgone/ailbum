@@ -55,7 +55,7 @@ public final class LayoutAssistant {
         let count = min(variants.count, LayoutAssistant.labels.count)
         if count < 2 { return nil }
         let letters = LayoutAssistant.labels.prefix(count).map { String($0) }.joined(separator: ", ")
-        let trimmedWish = wish.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedWish = LayoutAssistant.pyStrip(wish)
         let wishText = trimmedWish.isEmpty
             ? "" : "Пожелание автора альбома: «\(LayoutAssistant.clip(trimmedWish, LayoutAssistant.maxWish))». "
         let prompt =
@@ -118,6 +118,17 @@ public final class LayoutAssistant {
         return result
     }
 
+    /// Python `str.strip()`: Unicode whitespace plus the \x1c-\x1f separators.
+    static func pyStrip(_ text: String) -> String {
+        func space(_ u: Unicode.Scalar) -> Bool {
+            (0x1c...0x1f).contains(u.value) || CharacterSet.whitespacesAndNewlines.contains(u)
+        }
+        var scalars = text.unicodeScalars[...]
+        while let f = scalars.first, space(f) { scalars.removeFirst() }
+        while let l = scalars.last, space(l) { scalars.removeLast() }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
     private static func clip(_ text: String, _ limit: Int) -> String {
         String(String.UnicodeScalarView(text.unicodeScalars.prefix(limit)))
     }
@@ -132,7 +143,7 @@ public final class LayoutAssistant {
             guard let data = slice.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let letter = obj["choice"] as? String else { continue }
-            let trimmed = letter.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = pyStrip(letter)
             guard trimmed.unicodeScalars.count == 1 else { continue }
             let upper = trimmed.uppercased()
             guard let index = labels.map({ String($0) }).firstIndex(of: upper), index < count else { continue }
@@ -149,7 +160,7 @@ public final class LayoutAssistant {
                         inControl = false
                     }
                 }
-                reason = clip(cleaned.trimmingCharacters(in: .whitespacesAndNewlines), maxReason)
+                reason = clip(pyStrip(cleaned), maxReason)
             }
             return AssistantChoice(index: index, reason: reason)
         }

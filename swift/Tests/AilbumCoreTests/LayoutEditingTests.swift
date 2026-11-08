@@ -268,6 +268,16 @@ private func edJSON(_ crop: [String: Double]) -> JSONValue { .object(crop.mapVal
         #expect(refused { try Editing.setCrop(database: p, spreadId: 5, cellIndex: 1, crop: ["x": .int(0)]) } == numbers)
     }
 
+    // Python float("0x10") raises; Swift Double("0x10") would be 16.
+    @Test func editingCropHexStringRejected() throws {
+        let crop = try edAspectCrop(0.7, 1)
+        var object = edJSON(crop).objectValue!
+        object["x"] = .string("0x0")
+        #expect(refused {
+            try Editing.setCrop(database: path, spreadId: 5, cellIndex: 1, crop: .object(object))
+        } == "Кроп должен содержать числа x, y, w, h")
+    }
+
     @Test func editingCropEdgeFloatNoiseAccepted() throws {
         var crop = try edAspectCrop(0.7, 1)
         crop["x"] = 1.0 - crop["w"]! + 1e-12

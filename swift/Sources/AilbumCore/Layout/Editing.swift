@@ -280,7 +280,7 @@ public enum Editing {
     /// Without a wish the same photos get the best template; a wish re-picks them.
     public static func recomposeSpread(database: String, spreadId: Int, prompt: String = "") throws -> JSONValue {
         let weights = Preferences.parse(prompt)
-        if !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && weights.isEmpty {
+        if !LayoutAssistant.pyStrip(prompt).isEmpty && weights.isEmpty {
             throw AilbumError.invalid(unknownWish)
         }
         let db = try Database.open(path: database)
@@ -524,7 +524,10 @@ public enum Editing {
         case .int(let v)?: return Double(v)
         case .double(let v)?: return v
         case .bool(let v)?: return v ? 1.0 : 0.0
-        case .string(let s)?: return Double(s.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .string(let s)?:
+            // Swift also parses hex floats; Python float() does not.
+            let t = LayoutAssistant.pyStrip(s)
+            return t.contains(where: { $0 == "x" || $0 == "X" }) ? nil : Double(t)
         default: return nil
         }
     }
