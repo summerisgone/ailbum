@@ -8,9 +8,11 @@ public enum Forget {
         if case .integer(let i)? = v { return Int(i) }
         return nil
     }
-    private static func root(_ database: String) -> String {
-        (database as NSString).deletingLastPathComponent + "/proxies"
+    static func parent(_ database: String) -> String {
+        let p = (database as NSString).deletingLastPathComponent
+        return p.isEmpty ? "." : p
     }
+    private static func root(_ database: String) -> String { parent(database) + "/proxies" }
 
     private static func scope(_ db: Database, albumId: Int?, source: String?) throws -> [Int] {
         if (albumId == nil) == (source == nil) {
@@ -145,13 +147,13 @@ public enum Forget {
         for p in [database, database + "-wal", database + "-shm"] {
             if let attrs = try? FileManager.default.attributesOfItem(atPath: p) { dbBytes += (attrs[.size] as? Int) ?? 0 }
         }
-        let parent = (database as NSString).deletingLastPathComponent
+        let dir = parent(database)
         var images: [String: JSONValue] = [:]
         for k in ["present", "missing", "archived"] { images[k] = .int(counts[k] ?? 0) }
         return .object([
             "database_bytes": .int(dbBytes),
-            "proxies_bytes": .int(treeBytes(parent + "/proxies")),
-            "feature_cache_bytes": .int(treeBytes(parent + "/feature-cache")),
+            "proxies_bytes": .int(treeBytes(dir + "/proxies")),
+            "feature_cache_bytes": .int(treeBytes(dir + "/feature-cache")),
             "images": .object(images),
         ])
     }

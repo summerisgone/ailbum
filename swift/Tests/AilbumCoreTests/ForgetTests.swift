@@ -64,6 +64,11 @@ private func exists(_ db: String, _ rel: String) -> Bool {
 }
 
 @Suite struct ForgetTests {
+    @Test func bareDatabaseNameResolvesToCurrentDirectory() {
+        #expect(Forget.parent("ailbum.sqlite3") == ".")
+        #expect(Forget.parent("/x/y/ailbum.sqlite3") == "/x/y")
+    }
+
     @Test func exactlyOneScope() throws {
         let p = try makeForgetDB()
         #expect(throws: AilbumError.invalid("Укажите ровно одно: альбом или источник")) {

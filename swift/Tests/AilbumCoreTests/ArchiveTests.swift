@@ -72,7 +72,7 @@ private func makeAlbum(_ e: Env, _ ids: [Int], title: String = "Альбом", l
 
 /// Stands in for export_originals: records a clean export of the current selection.
 private func fakeExport(_ e: Env, _ albumId: Int, missing: String = "[]") throws {
-    let hash = try Archive.selectionHash(e.db, albumId)
+    let hash = try AlbumLibrary.selectionHash(e.db, albumId: albumId)
     try e.db.execute(
         "INSERT INTO album_exports (album_id, selection_hash, folder, count, missing_json, exported_at)"
         + " VALUES (?, ?, '/x', 1, ?, 't')", [.integer(albumId), .text(hash), .text(missing)])

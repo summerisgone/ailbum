@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public enum Archive {
@@ -14,12 +13,6 @@ public enum Archive {
         return ""
     }
 
-    static func selectionHash(_ db: Database, _ albumId: Int) throws -> String {
-        let list = ids(try db.query("SELECT image_id FROM album_photos WHERE album_id = ?", [.integer(albumId)]), "image_id").sorted()
-        let digest = SHA256.hash(data: Data(list.map(String.init).joined(separator: ",").utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
     private static func albumImageIds(_ db: Database, _ albumId: Int) throws -> Set<Int> {
         var out = Set(ids(try db.query("SELECT image_id FROM album_photos WHERE album_id = ?", [.integer(albumId)]), "image_id"))
         if let run = try db.query("SELECT run_id FROM albums WHERE id = ?", [.integer(albumId)]).first,
@@ -31,7 +24,7 @@ public enum Archive {
 
     private static func needsExport(_ db: Database, _ albumId: Int) throws -> Bool {
         if try db.query("SELECT 1 FROM layouts WHERE album_id = ?", [.integer(albumId)]).isEmpty { return false }
-        let current = try selectionHash(db, albumId)
+        let current = try AlbumLibrary.selectionHash(db, albumId: albumId)
         return try db.query(
             "SELECT 1 FROM album_exports WHERE album_id = ? AND selection_hash = ? AND missing_json = '[]' LIMIT 1",
             [.integer(albumId), .text(current)]).isEmpty
