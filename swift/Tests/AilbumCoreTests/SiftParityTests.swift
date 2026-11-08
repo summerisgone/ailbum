@@ -122,7 +122,10 @@ private func matchedPairs(_ kps: [SiftKeypoint], _ g: Golden) -> [(Int, GoldenKP
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
     let text = String(decoding: data, as: UTF8.self)
-    #expect(text.split(separator: "\n").count == 1)
+    #expect(text.split(separator: "\n").count > 1)
     let obj = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    #expect(Set(obj.keys) == ["score", "mutual_matches", "inliers", "inlier_ratio", "coverage_left", "coverage_right"])
+    #expect(Set(obj.keys) == ["left", "right", "thresholds", "hash_color", "geometric_scene_overlap", "similar", "matched_by", "timing_ms"])
+    let geo = try #require(obj["geometric_scene_overlap"] as? [String: Any])
+    #expect(Set(geo.keys) == ["score", "mutual_matches", "inliers", "inlier_ratio", "coverage_left", "coverage_right", "similar"])
+    #expect((geo["score"] as? Double ?? 0) >= 0.55)
 }

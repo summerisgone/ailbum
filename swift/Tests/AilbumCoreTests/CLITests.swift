@@ -76,7 +76,7 @@ private func tmpDir() throws -> String {
 @Test func testMissingFile() throws {
     let r = try run(["quality", "/nonexistent/x.png"])
     #expect(r.code == 2)
-    #expect(r.err.hasPrefix("ошибка:"))
+    #expect(r.err.hasPrefix("Ошибка: файл не найден:"))
 }
 
 @Test func testDbStats() throws {
