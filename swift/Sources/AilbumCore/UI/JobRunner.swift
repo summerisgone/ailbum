@@ -27,7 +27,7 @@ public final class JobRunner: @unchecked Sendable {
     private let lock = NSLock()
     private var state = JobState()
     private var active: Process?
-    private var cancelled = false
+    private let deliver = NSRecursiveLock()
     private var onUpdate: (@Sendable (JobState) -> Void)?
 
     public init(executable: URL) { self.executable = executable }
@@ -39,8 +39,12 @@ public final class JobRunner: @unchecked Sendable {
 
     public var isRunning: Bool { lock.lock(); defer { lock.unlock() }; return active != nil }
 
-    private func publish(_ change: (inout JobState) -> Void) {
+    /// Updates from a process that is no longer `active` (cancelled) are dropped.
+    /// `deliver` keeps callbacks in the same order as state changes.
+    private func publish(from process: Process? = nil, _ change: (inout JobState) -> Void) {
+        deliver.lock(); defer { deliver.unlock() }
         lock.lock()
+        if let process, active !== process { lock.unlock(); return }
         change(&state)
         let snapshot = state
         let callback = onUpdate
@@ -70,22 +74,23 @@ public final class JobRunner: @unchecked Sendable {
         process.standardOutput = out
         process.standardError = err
 
+        deliver.lock()
         lock.lock()
         if active != nil {
-            lock.unlock()
+            lock.unlock(); deliver.unlock()
             throw AilbumError.invalid("Уже выполняется добавление или анализ фотографий")
         }
         active = process
-        cancelled = false
         self.onUpdate = onUpdate
         lock.unlock()
 
         let stage = kind == "index" ? "Подготовка добавления" : kind == "layout" ? "Подготовка раскладки" : "Подготовка анализа"
         publish { $0 = JobState(status: .running, kind: kind, stage: stage, detail: "", result: $0.result) }
+        deliver.unlock()
 
         do { try process.run() } catch {
             lock.lock(); if active === process { active = nil }; lock.unlock()
-            publish { $0.status = .error; $0.error = error.localizedDescription }
+            publish(from: process) { $0.status = .error; $0.error = error.localizedDescription }
             return
         }
 
@@ -102,10 +107,10 @@ public final class JobRunner: @unchecked Sendable {
                 while let nl = buffer.firstIndex(of: 0x0A) {
                     let line = String(decoding: buffer[buffer.startIndex..<nl], as: UTF8.self)
                     buffer.removeSubrange(buffer.startIndex...nl)
-                    handleLine(line: line, box: box)
+                    handleLine(line: line, box: box, process: process)
                 }
             }
-            if !buffer.isEmpty { handleLine(line: String(decoding: buffer, as: UTF8.self), box: box) }
+            if !buffer.isEmpty { handleLine(line: String(decoding: buffer, as: UTF8.self), box: box, process: process) }
             group.leave()
         }
         group.enter()
@@ -121,11 +126,12 @@ public final class JobRunner: @unchecked Sendable {
         Thread.detachNewThread { [self] in
             process.waitUntilExit()
             group.wait()
+            deliver.lock(); defer { deliver.unlock() }
             lock.lock()
-            if active === process { active = nil }
-            let wasCancelled = cancelled
+            let owned = active === process
+            if owned { active = nil }
             lock.unlock()
-            if wasCancelled { return }
+            if !owned { return }
             let code = process.terminationStatus
             if code != 0 {
                 let fallback = box.stderrTail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -134,8 +140,7 @@ public final class JobRunner: @unchecked Sendable {
                     ?? "Фоновый процесс завершился с кодом \(code)"
                 publish { $0.status = .error; $0.error = message }
             } else {
-                lock.lock(); let status = state.status; lock.unlock()
-                if status != .complete { publish { $0.status = .complete; $0.current = nil; $0.total = nil } }
+                publishFinalComplete(process)
             }
         }
     }
@@ -151,16 +156,22 @@ public final class JobRunner: @unchecked Sendable {
         }
     }
 
-    private func handleLine(line: String, box: Box) {
+    private func publishFinalComplete(_ process: Process) {
+        deliver.lock(); defer { deliver.unlock() }
+        lock.lock(); let status = state.status; lock.unlock()
+        if status != .complete { publish { $0.status = .complete; $0.current = nil; $0.total = nil } }
+    }
+
+    private func handleLine(line: String, box: Box, process: Process) {
         guard let parsed = try? JSONValue.parse(line) else {
-            publish { $0.status = .running; $0.detail = line }
+            publish(from: process) { $0.status = .running; $0.detail = line }
             return
         }
         guard case .object(let o) = parsed else { return }
         switch o["type"]?.stringValue {
         case "progress":
             let detail = o["detail"]?.stringValue ?? ""
-            publish {
+            publish(from: process) {
                 $0.status = .running
                 $0.stage = o["stage"]?.stringValue
                 $0.detail = detail
@@ -170,7 +181,7 @@ public final class JobRunner: @unchecked Sendable {
         case "error":
             box.reportedError = o["error"]?.stringValue
         case "complete":
-            publish { $0.status = .complete; $0.result = o["result"]; $0.current = nil; $0.total = nil }
+            publish(from: process) { $0.status = .complete; $0.result = o["result"]; $0.current = nil; $0.total = nil }
         default: break
         }
     }
@@ -178,7 +189,6 @@ public final class JobRunner: @unchecked Sendable {
     public func cancel() {
         lock.lock()
         if let p = active {
-            cancelled = true
             active = nil
             lock.unlock()
             p.terminate()

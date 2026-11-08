@@ -119,3 +119,24 @@ private func isDone(_ s: JobState) -> Bool { s.status == .complete || s.status =
         r.cancel()
     }
 }
+
+@Suite struct JobRunnerRaceTests {
+    @Test func cancelThenImmediateRestartIsNotPoisonedByOldExit() throws {
+        let r = JobRunner(executable: try script("sleep 30"))
+        let c = Collector()
+        try r.start(kind: "index", database: "d", sources: [], albumId: nil, params: nil, onUpdate: { _ in })
+        r.cancel()
+        try r.start(kind: "analyze", database: "d", sources: [], albumId: nil, params: nil, onUpdate: c.add)
+        Thread.sleep(forTimeInterval: 0.8)
+        #expect(c.all.allSatisfy { $0.status == .running })
+        #expect(r.isRunning)
+        r.cancel()
+    }
+
+    @Test func chattyChildDoesNotBlock() throws {
+        let c = Collector()
+        let r = JobRunner(executable: try script("i=0; while [ $i -lt 3000 ]; do echo 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >&2; i=$((i+1)); done\necho '{\"type\":\"complete\",\"result\":{}}'"))
+        try r.start(kind: "index", database: "d", sources: [], albumId: nil, params: nil, onUpdate: c.add)
+        #expect(c.wait { $0.status == .complete })
+    }
+}
