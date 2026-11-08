@@ -4,6 +4,25 @@ import Testing
 @testable import AilbumCore
 
 @Suite struct ModelStoreTests {
+    @Test func modelsDirOrder() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("msd-\(UUID().uuidString)")
+        let res = root.appendingPathComponent("Resources")
+        let fallback = root.appendingPathComponent("fallback")
+        try FileManager.default.createDirectory(at: res, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        // no Models dir in bundle -> source fallback
+        #expect(ModelStore.modelsDir(environment: [:], bundleResources: res, sourceFallback: fallback) == fallback)
+        #expect(ModelStore.modelsDir(environment: [:], bundleResources: nil, sourceFallback: fallback) == fallback)
+        // bundle Models present
+        let models = res.appendingPathComponent("Models")
+        try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
+        #expect(ModelStore.modelsDir(environment: [:], bundleResources: res, sourceFallback: fallback).path == models.path)
+        // env wins
+        let env = ["AILBUM_MODELS_DIR": "/some/where"]
+        #expect(ModelStore.modelsDir(environment: env, bundleResources: res, sourceFallback: fallback).path == "/some/where")
+        #expect(ModelStore.modelsDir(environment: ["AILBUM_MODELS_DIR": ""], bundleResources: res, sourceFallback: fallback).path == models.path)
+    }
+
     @Test func availableMissing() {
         #expect(ModelStore.available("nope") == false)
     }

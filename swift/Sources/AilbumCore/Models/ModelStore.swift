@@ -7,12 +7,24 @@ public enum ModelStore {
     nonisolated(unsafe) private static var loaded: [String: MLModel] = [:]
 
     static var modelsDir: URL {
-        if let env = ProcessInfo.processInfo.environment["AILBUM_MODELS_DIR"], !env.isEmpty {
+        var src = URL(fileURLWithPath: #filePath)
+        for _ in 0..<4 { src.deleteLastPathComponent() }  // swift/
+        return modelsDir(
+            environment: ProcessInfo.processInfo.environment,
+            bundleResources: Bundle.main.resourceURL,
+            sourceFallback: src.appendingPathComponent("Models"))
+    }
+
+    static func modelsDir(environment: [String: String], bundleResources: URL?, sourceFallback: URL) -> URL {
+        if let env = environment["AILBUM_MODELS_DIR"], !env.isEmpty {
             return URL(fileURLWithPath: env)
         }
-        var url = URL(fileURLWithPath: #filePath)
-        for _ in 0..<4 { url.deleteLastPathComponent() }  // swift/
-        return url.appendingPathComponent("Models")
+        if let res = bundleResources {
+            let m = res.appendingPathComponent("Models")
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: m.path, isDirectory: &isDir), isDir.boolValue { return m }
+        }
+        return sourceFallback
     }
 
     static func sourceURL(_ name: String) -> URL {
