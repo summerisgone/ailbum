@@ -1,0 +1,12 @@
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:28"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:32"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:33"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:38"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:43"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:49:55"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:50:05"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:50:08"}
+{"file": "testActiveModelRoundTripAndDeactivate()", "line": 1, "context": "testActiveModelRoundTripAndDeactivate(): Caught error: .sqlite(\"CHECK constraint failed: kind IN (\\'pairwise\\', \\'pointwise\\')\") (error)", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:50:44"}
+{"file": "testBlurryUsesStrictLess()", "line": 1, "context": "testBlurryUsesStrictLess(): Expectation failed: try analyzed(320, 320, 20, threshold: s).isBlurry == false (error)", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:50:44"}
+{"file": "testActiveModelRoundTripAndDeactivate()", "line": 1, "context": "testActiveModelRoundTripAndDeactivate(): Caught error: .sqlite(\"CHECK constraint failed: kind IN (\\'pairwise\\', \\'pointwise\\')\") (error)", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:51:44"}
+{"file": "testBlurryUsesStrictLess()", "line": 1, "context": "testBlurryUsesStrictLess(): Expectation failed: try analyzed(320, 320, 20, threshold: s).isBlurry == false (error)", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "10:51:44"}

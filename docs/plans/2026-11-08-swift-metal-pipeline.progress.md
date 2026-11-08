@@ -1,0 +1,35 @@
+- start ebb6bff
+- Ruling: no Wave 0 stub task; consumers T4 T5 T7 T8 T12 start when their producers commit - one SwiftPM test target, stubs in producer-owned files would race producers - cost: longer critical path
+- Ruling: accept plan above 15k chars - contracts for 13 tasks - cost: larger prime
+- unblocked: dispatched T1 T2 T3 T6 T10 T11 T13 at 10:48:41; waiting on fixes: T5 T9; waiting on producers: T4 T7 T8 T12
+- Ruling: implementers Read .superlite/prime.md instead of a pasted prime - identical bytes, one fewer round trip - cost: none
+- unblocked: dispatched T9 at 10:49:08; waiting on producers: T4 (T2 T3) T5 (T1 T3) T7 (T1 T6) T8 (T1) T12 (T9 T10 T11 T2 T3)
+- tests fast passed=0 failed=1 skipped=0 seconds=2.9
+- tests fast passed=0 failed=1 skipped=0 seconds=2.5
+- tests fast passed=0 failed=1 skipped=0 seconds=3.2
+- tests fast passed=0 failed=1 skipped=0 seconds=3.8
+- tests fast passed=0 failed=1 skipped=0 seconds=7.3
+- tests fast passed=0 failed=1 skipped=0 seconds=5.7
+- tests fast passed=0 failed=1 skipped=0 seconds=5.4
+- tests fast passed=0 failed=1 skipped=0 seconds=6.4
+- tests fast passed=293 failed=2 skipped=0 seconds=13.0
+- T1 committed 7881013; Ruling: implementers verify with the test-cmd.json swift test --filter command - sl run_tests --fast swift finds no command - cost: none
+- T10 T6 committed; Ruling: T10 round-trip test named testFeatureCacheRoundTrip (name clash with VectorsTests) - cost: none
+- T9 committed 3cdf6ae
+- tests fast passed=293 failed=2 skipped=0 seconds=11.1
+- T8 committed 33fc7c9
+- T13 committed f4f9385; Ruling: compare tests use lossless PNG fixtures - decoder-independent parity - cost: JPEG decode path untested here
+- T7 committed 939d56c; note: Archive.selectionHash internal duplicates T5 AlbumLibrary.selectionHash - dedupe in package review
+- T3 committed 5d16621; T11 committed bac73d6; note: RankingStore.featureVersion=1 must switch to RankingFeatures.version after T2
+- T2 committed 43e10c6; review: groupPairs sorted-key order vs Python insertion order
+- tests fast passed=320 failed=0 skipped=0 seconds=13.5
+- T5 committed 0ac2cfd; full fast run 320 passed 0 failed per T5
+- T4 committed 82a2a85; groupPairs order only affects fit row order (ruled acceptable); full run 328 passed
+- T12 committed; full run 333 passed
+- Ruling: analysis.json keys sorted alphabetically (JSONValue unordered) - consumers parse JSON, order not semantic - cost: byte diffs vs Python output only
+- review items: manifest person ids not copied back from AnalysisStore.save; RankingStore.featureVersion -> RankingFeatures.version; dedupe Archive.selectionHash with AlbumLibrary.selectionHash
+- review ranking/pipeline committed d7c4f27; 335 passed
+- review albums/catalog committed; 335 passed
+- Ruling: NULL summary_json omitted (Python raises), symlinks skipped in usage, .swcache cleanup kept - minor, safer behavior - cost: small divergence from Python on corrupt/odd catalogs
+- final review CHANGES_REQUESTED: all 6 findings stale (packet used mid-build test summary + checker path bug); verified on HEAD: full suite 335/335 passed, isBlurry '<', photoProxy/toJSON/FeatureCache signatures and stats keys present, no fatalError in Sources
+- Ruling: freeze 4b on green full suite - findings verified false - cost: none
