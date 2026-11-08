@@ -56,7 +56,7 @@ public final class JobRunner: @unchecked Sendable {
         kind: String, database: String, sources: [String], albumId: Int?, params: JSONValue?,
         onUpdate: @escaping @Sendable (JobState) -> Void
     ) throws {
-        var args = [kind, "--database", database, "--models-dir", ModelStore.modelsDir.path]
+        var args = ["job", kind, "--database", database, "--models-dir", ModelStore.modelsDir.path]
         for s in sources { args += ["--source", URL(fileURLWithPath: s).standardizedFileURL.path] }
         if kind == "layout" {
             guard let albumId else { throw AilbumError.invalid("Не указан альбом для раскладки") }

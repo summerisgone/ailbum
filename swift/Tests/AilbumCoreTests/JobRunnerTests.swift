@@ -59,7 +59,7 @@ private func isDone(_ s: JobState) -> Bool { s.status == .complete || s.status =
         Thread.sleep(forTimeInterval: 0.3)
         #expect(c.last?.status == .complete)
         let args = try String(contentsOfFile: out, encoding: .utf8).split(separator: "\n").map(String.init)
-        #expect(args == ["layout", "--database", "/tmp/x.db", "--models-dir", ModelStore.modelsDir.path,
+        #expect(args == ["job", "layout", "--database", "/tmp/x.db", "--models-dir", ModelStore.modelsDir.path,
                          "--source", "/a/c", "--album-id", "7", "--params", "{\"k\":1}"])
     }
 
