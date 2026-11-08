@@ -1,0 +1,51 @@
+- start da2488fc7d85ad7c0c295666eabe1158d41be620
+- unblocked: dispatched T0 T2 T3 T4 T5 T6 T7 T8 T9 at 00:32:53; waiting on fixes: T1 T10 T11
+- unblocked: dispatched T1 at 00:34:00; T10 T11 wait for producers
+- Ruling: T10 consumes FaceAlign.alignCrop via Notes (T4 e.g. does not name it) - cost: seam check skips it
+- tests fast passed=115 failed=0 skipped=1 seconds=8.7
+- tests fast passed=0 failed=1 skipped=0 seconds=1.9
+- note phase 5: ModelStore default dir walks up from #filePath of the source; the packaged app must set the bundle models dir
+- tests fast passed=0 failed=1 skipped=0 seconds=6.9
+- tests fast passed=0 failed=1 skipped=0 seconds=10.9
+- tests fast passed=0 failed=1 skipped=0 seconds=10.1
+- tests fast passed=0 failed=1 skipped=0 seconds=13.1
+- tests fast passed=0 failed=1 skipped=0 seconds=16.2
+- tests fast passed=0 failed=1 skipped=0 seconds=22.0
+- tests fast passed=0 failed=1 skipped=0 seconds=17.5
+- tests fast passed=0 failed=1 skipped=0 seconds=2.7
+- tests fast passed=0 failed=1 skipped=0 seconds=1.4
+- Ruling: CoreML eye model names are input_1 / var_19 (ML Program forbids ONNX names input.1 / 19) - cost: none
+- tests fast passed=155 failed=1 skipped=0 seconds=8.7
+- review point: Aesthetics.swift duplicates HashColor HSV tables - dedupe by making them internal
+- tests fast passed=156 failed=0 skipped=0 seconds=5.3
+- tests fast passed=156 failed=0 skipped=0 seconds=7.3
+- finding (pre-existing Python): eye open probability is 0.0 on astronaut.png (eyes visibly open) in both Python and Swift - output index 0 may be 'closed' for open-closed-eye-0001; kept parity, reported to user
+- tests fast passed=165 failed=0 skipped=0 seconds=10.7
+- pending fix after review: CLIP preprocess uses CGContext high-quality resize; PIL bicubic differs -> aesthetic diff 0.016, extra scene tag 'diving' 0.162 vs Python dropped. Port PIL BICUBIC resample in Clip.swift
+- tests fast passed=165 failed=1 skipped=0 seconds=25.6
+- tests fast passed=166 failed=0 skipped=0 seconds=16.8
+- tests fast passed=166 failed=0 skipped=0 seconds=13.8
+- tests fast passed=165 failed=1 skipped=0 seconds=15.0
+- tests fast passed=165 failed=1 skipped=0 seconds=15.2
+- tests fast passed=165 failed=1 skipped=0 seconds=14.0
+- tests fast passed=165 failed=1 skipped=0 seconds=15.7
+- tests fast passed=165 failed=2 skipped=0 seconds=15.5
+- tests fast passed=165 failed=2 skipped=0 seconds=14.7
+- tests fast passed=166 failed=0 skipped=0 seconds=13.6
+- tests fast passed=168 failed=0 skipped=0 seconds=15.2
+- tests fast passed=168 failed=0 skipped=0 seconds=13.9
+- tests full passed=168 failed=0 skipped=0 seconds=13.1
+- Ruling: phase 3 final-review findings 1, 3, 4, 5 are stale incidents: full suite 168 passed/0 failed/0 skipped; prof() no longer in SaliencyTests; Clip.record exists with the plan signature (Clip.swift:136); testCompiledCache asserts a == b and passes; no fatalError in swift/Sources (two try! on MLMultiArray with fixed valid shapes) - cost: none
+- Finding 2 (saliency debug speed 11.7 s) sent to fixer: vDSP FFT
+- tests fast passed=0 failed=1 skipped=0 seconds=1.9
+- tests fast passed=0 failed=1 skipped=0 seconds=1.6
+- tests fast passed=167 failed=1 skipped=0 seconds=9.3
+- tests fast passed=167 failed=1 skipped=0 seconds=7.6
+- tests fast passed=167 failed=1 skipped=0 seconds=7.7
+- tests fast passed=167 failed=1 skipped=0 seconds=8.3
+- tests fast passed=167 failed=1 skipped=0 seconds=7.4
+- tests fast passed=167 failed=1 skipped=0 seconds=7.4
+- tests fast passed=168 failed=0 skipped=0 seconds=8.8
+- tests fast passed=167 failed=1 skipped=0 seconds=7.0
+- tests full passed=168 failed=0 skipped=0 seconds=7.0
+- full suite after vDSP fix: see test-summary

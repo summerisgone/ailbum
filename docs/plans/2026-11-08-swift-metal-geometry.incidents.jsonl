@@ -1,0 +1,124 @@
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:01"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:04"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:25"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:30"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:35"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:19:49"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:20:04"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:20:07"}
+{"file": "swift/Tests/AilbumCoreTests/OrientationTests.swift", "line": 36, "context": "Spec says v=y*4 -> 270; faithful OpenCV (dy=img(y-1)-img(y+1), angle=360-bin) gives 90. Followed OpenCV.", "agent": "T3", "kind": "spec-ambiguity", "resolution": "test expects 90", "confidence": "medium", "time": "00:20:42"}
+{"file": "swift/Sources/AilbumCore/CV/Homography.swift", "line": 1, "context": "Jacobi, Hartley norm, degenerate guards, matcher ties/sizes verified", "agent": "reviewer", "kind": "verified", "resolution": "fixed", "confidence": "medium", "time": "00:24:54"}
+{"file": "swift/Sources/AilbumCore/Metal/MetalContext.swift", "line": 47, "context": "pipeline cache keyed by hashValue+count; now keyed by source", "agent": "reviewer", "kind": "exception", "resolution": "fixed", "confidence": "high", "time": "00:24:58"}
+{"file": "swift/Sources/AilbumCore/Sift/Orientation.swift", "line": 58, "context": "360-angle snap eps 1e-4 vs FLT_EPSILON; cvRound half-even", "agent": "reviewer", "kind": "exception", "resolution": "fixed", "confidence": "medium", "time": "00:24:58"}
+{"file": "swift/Sources/AilbumCore/CV/Similarity.swift", "line": 70, "context": "timestamp: space separator with tz offset not parsed", "agent": "reviewer", "kind": "exception", "resolution": "fixed", "confidence": "medium", "time": "00:24:58"}
+{"file": "basicPairs()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "large()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "parityRandom()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "ratioIsOnNonSquaredDistance()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "ratioRejectsAmbiguous()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "singleRow()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testAreaParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testBlackImageHistogram()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testBlobRoundTrip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testBlurParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testBorderSkipped()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCandidate()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testClusterEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testClusterIdentical()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCollinear()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCompareCLI()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCompleteLinkTieLaterPairWins()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testConstantFeature()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCount()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCoverageDegenerate()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCoverageSquare()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testCoverageTriangle()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDbStats()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDecodeGarbage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDecodeShortBlobDoesNotTrap()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDecodeZeroVector()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDescriptorParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDeterministic()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDiscoverSuffixes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDogIsDifference()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testDuplicatesRemoved()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testEdgeRejected()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testEmptyAndFlat()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testEmptyImageDoesNotTrap()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testEncodeEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testExposureBlack()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testExposureParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testFewMutual()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testFewerThanFour()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testFitParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testForeignKeysOn()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testFreshSchema()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testFullBaseLevelParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testGrayFloat()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testHammingSimilarity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testHashColorUnion()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testHistogramParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testHistogramUnitNorm()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testHorizontalRamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testInvalidWindow()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testJSONFromPython()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testJSONKeys()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testJSONMissingKeyThrows()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testKeypointParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testLengths()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testLittleEndianBytes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testLowContrastRejected()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testManyKeypointsMatchSingle()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testMetalAvailable()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testMinimumPeak()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testMissingFile()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNearBorder()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNegativeSharpnessClamped()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNestedTransactionInnerRollback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNilIsEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNoUpscale()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testNormClamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testOctaveDownsample()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testOpenV12Twice()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testOrientation6()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testPerspective()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testPhashNoisyParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testPhashParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testPipelineFromSource()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testQualityJSON()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRejectsOldSchema()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRetainBest()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRetainStable()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRetainZero()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRotationInvariance()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRotationSignMatchesOpenCV()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRoundScale()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testRoundTrip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testSceneParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testScoreClip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testScoreExamples()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testScoreFormula()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testShape()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testSharpnessParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testSharpnessUniform()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testSinglePeak()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testSourceCacheKeyedBySource()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTakenAtExif()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTakenAtFallback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTimesLengthMismatch()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTimestampFormats()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTinyImage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTinyImageBordersParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTransactionCommit()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTransactionRollback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTranslationWithOutliers()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testTwoPeaks()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testUnicodePath()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testUnionFindComponents()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testUnrelated()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testUpsampledOctaveScales()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testUsage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testVerticalRamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testWAL()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "testWindowByTime()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}
+{"file": "tiesLowerIndexWins()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:26:07"}

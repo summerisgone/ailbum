@@ -1,0 +1,198 @@
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:12"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:24"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:35"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:46"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:51"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:34:56"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:35:13"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:35:27"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:36:36"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:36:44"}
+{"file": "testCompiledCache()", "line": 1, "context": "testCompiledCache(): Expectation failed: (a → file:///Users/ivan/Library/Caches/ailbum/models/eye-48e094d01e7226306265467df57ac627e8191ab70c1806cd248cf6c1205d914a.mlmodelc) == (b → file:///Users/ivan…", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:38:04"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 20.791524052619934) < (20 → 20.0) (error)", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:43:55"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 11.841475009918213) < (3 → 3.0) (error): debug seconds 11.841475009918213", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:45:17"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 11.861530065536499) < (3 → 3.0) (error): debug seconds 11.861530065536499", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:45:42"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 11.684009909629822) < (3 → 3.0) (error): debug seconds 11.684009909629822", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:46:10"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 11.952592015266418) < (3 → 3.0) (error): debug seconds 11.952592015266418", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:46:32"}
+{"file": "prof()", "line": 1, "context": "prof(): Expectation failed: Bool(false) (error): dft2 7.471021056175232 quantile 0.5055168867111206", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:46:53"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 12.28932797908783) < (3 → 3.0) (error): debug seconds 12.28932797908783", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:46:53"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 11.651271939277649) < (3 → 3.0) (error): debug seconds 11.651271939277649", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:47:18"}
+{"file": "prof()", "line": 1, "context": "prof(): Expectation failed: Bool(false) (error): dft2 6.984475016593933 quantile 0.5009310245513916", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:47:18"}
+{"file": "swift/Sources/AilbumCore/Models/FaceAttributesModel.swift", "line": 1, "context": "preprocessing channel/scale verified vs Python", "agent": "reviewer", "kind": "verified", "resolution": "fixed", "confidence": "high", "time": "00:48:12"}
+{"file": "swift/Sources/AilbumCore/Models/YOLOX.swift", "line": 1, "context": "NMS IoU no +1, letterbox verified", "agent": "reviewer", "kind": "verified", "resolution": "fixed", "confidence": "high", "time": "00:48:12"}
+{"file": "availableMissing()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "basicPairs()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "decodeExample()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "detectRuns()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "large()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "nchwBGR()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "parityRandom()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "ratioIsOnNonSquaredDistance()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "ratioRejectsAmbiguous()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "recordExamples()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "singleRow()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testAnalyzeImageCLI()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testAreaParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testAsProbabilities()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testAttributes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBatchedNms()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBlackImageHistogram()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBlobRoundTrip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBlurParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBorderSkipped()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBoundaryRisk()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testBoxIoU()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCandidate()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClassifyWithModels()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClipParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClipTextDecode()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClipToImage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClusterEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testClusterIdentical()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCollinear()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testColorGray()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testColorParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCompareCLI()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCompiledCache()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCompleteLinkTieLaterPairWins()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testComponents()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testConstantFeature()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCount()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCoverageDegenerate()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCoverageSquare()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testCoverageTriangle()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDbStats()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDecodeGarbage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDecodeShortBlobDoesNotTrap()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDecodeZeroVector()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDescriptorParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDeterministic()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDftBasics()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDftParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDftPowerOfTwo()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDiscoverSuffixes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDogIsDifference()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testDuplicatesRemoved()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEdgeRejected()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmbedNormalised()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmbeddingCosine()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmbeddingNormalised()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmptyAndFlat()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmptyImageDoesNotTrap()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEmptyThrows()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testEncodeEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testExample()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testExposureBlack()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testExposureParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFaceCount()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFacesSubject()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFakeValues()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFewMutual()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFewerThanFour()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFitParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testForeignKeysOn()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFreshSchema()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testFullBaseLevelParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testGrayFloat()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHammingSimilarity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHarmonyComplementary()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHashColorUnion()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHistogramParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHistogramUnitNorm()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testHorizontalRamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testInvalidWindow()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testJSONFromPython()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testJSONKeys()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testJSONMissingKeyThrows()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testKeypointParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testLengths()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testLetterboxParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testLittleEndianBytes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testLowContrastRejected()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testManyKeypointsMatchSingle()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMeanScale()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMetalAvailable()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMinimumPeak()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMissingFile()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMissingModelThrows()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testMissingModels()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNearBorder()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNegativeSharpnessClamped()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNestedTransactionInnerRollback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNilIsEmpty()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNmsSuppresses()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNmsUsesTruncatedIntegerBoxes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNoFaceUniform()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNoUpscale()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testNormClamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testObjectsParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testOctaveDownsample()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testOpenV12Twice()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testOrientation6()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testParityWarp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testPerspective()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testPhashNoisyParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testPhashParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testPipelineFromSource()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testPreprocessParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testQualityJSON()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testQuantile()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRankThreshold()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRejectsOldSchema()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testResizeMatchesPILAstronaut()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testResizeMatchesPILGradient()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRetainBest()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRetainStable()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRetainZero()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRotationInvariance()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRotationSignMatchesOpenCV()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRoundScale()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRoundTrip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testRounding()", "line": 0, "context": "run_tests full: 2 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testScaleBack()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSceneParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testScoreClip()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testScoreExamples()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testScoreFormula()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testShape()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testShapeMismatch()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSharpnessParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSharpnessUniform()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSinglePeak()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSmallFaceNoAttributes()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSortOrder()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSourceCacheKeyedBySource()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSquareCropEdges()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testSubjectParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTakenAtExif()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTakenAtFallback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTemplateIdentity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testThreshold()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTimesLengthMismatch()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTimestampFormats()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTinyImage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTinyImageBordersParity()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTransactionCommit()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTransactionRollback()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTranslationWithOutliers()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testTwoPeaks()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUnicodePath()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUniformImage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUnionFindComponents()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUnrelated()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUpsampledOctaveScales()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testUsage()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testVerticalRamp()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testWAL()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "testWindowByTime()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "tiesLowerIndexWins()", "line": 0, "context": "run_tests full: 1 tests pass", "agent": "run_tests", "kind": "verified", "time": "00:50:58"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:52:18"}
+{"file": "-", "line": 0, "context": "exit code 1: error: fatalError", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:53:00"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 4.768651962280273) < (2 → 2.0) (error): debug seconds 4.768651962280273", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:53:19"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 4.872488021850586) < (2 → 2.0) (error): debug seconds 4.872488021850586", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:53:34"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 5.360229015350342) < (2 → 2.0) (error): debug seconds 5.360229015350342", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:53:51"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 4.682561039924622) < (2 → 2.0) (error): debug seconds 4.682561039924622", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:54:30"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 4.31122100353241) < (2 → 2.0) (error): debug seconds 4.31122100353241", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:54:44"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 4.432983994483948) < (2 → 2.0) (error): debug seconds 4.432983994483948", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:55:02"}
+{"file": "testLargeImageSpeedAndFinite()", "line": 1, "context": "testLargeImageSpeedAndFinite(): Expectation failed: (dt → 0.3040308952331543) < 0.0001 (error): debug seconds 0.3040308952331543", "agent": "run_tests", "kind": "test-failure", "resolution": "open", "time": "00:56:32"}

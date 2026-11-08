@@ -1,0 +1,33 @@
+- start a0a4b7b093aa51c201de61d29f3d19c1d5e080cb
+- unblocked: dispatched T0 T1 T2 T3 T4 T5 T6 at 00:17:42; waiting on fixes: T7 T8
+- Ruling: fresh implementers get prime path + task in one prompt (no READY round trip) - cost: none observed in phase 1
+- Ruling: T1 also owns one addition to MetalContext.swift: pipeline(_ name:, source:) compiling a separate cached library; T5 codes against it - cost: T5 waits for T1's first edit
+- Ruling: T7 and T8 drop Consumes lines for producers whose e.g. lines do not name the function (T2, T3, T6 frozen); calls are listed in Notes and covered by real-code edges - cost: seam check skips them
+- Ruling: restore edges T4 -> T8 and T7 -> T8 after prune: T8 parity tests run real descriptor and similarity code - cost: none
+- Ruling: accept plan above 15k chars, excess in frozen task blocks
+- tests fast passed=0 failed=1 skipped=0 seconds=2.4
+- tests fast passed=0 failed=1 skipped=0 seconds=1.1
+- tests fast passed=0 failed=1 skipped=0 seconds=5.3
+- tests fast passed=0 failed=1 skipped=0 seconds=7.3
+- tests fast passed=0 failed=1 skipped=0 seconds=10.5
+- tests fast passed=0 failed=1 skipped=0 seconds=13.0
+- tests fast passed=0 failed=1 skipped=0 seconds=8.9
+- tests fast passed=0 failed=1 skipped=0 seconds=8.0
+- tests fast passed=87 failed=0 skipped=0 seconds=2.7
+- tests fast passed=94 failed=0 skipped=0 seconds=4.4
+- Ruling: T3 testVerticalRamp expects ~90 (OpenCV dy = img(y-1) - img(y+1)); plan's 270 was wrong - T8 parity vs cv2 is the arbiter - cost: if wrong, T8 descriptor parity fails and T3 flips the sign
+- Ruling: T7 starts before T5 is committed (T5 is done but waits on T1's MetalContext overload) - code is in the tree - cost: T7 may see a transient build break
+- tests fast passed=102 failed=0 skipped=0 seconds=4.1
+- tests fast passed=102 failed=0 skipped=0 seconds=2.8
+- Ruling: T8 starts before T1 is committed; T8 writes fixtures/facade first and waits for ScaleSpace.build - cost: idle wait inside T8
+- tests fast passed=108 failed=0 skipped=0 seconds=6.3
+- tests fast passed=111 failed=0 skipped=0 seconds=5.4
+- tests fast passed=111 failed=0 skipped=0 seconds=4.7
+- tests fast passed=111 failed=0 skipped=0 seconds=5.3
+- tests fast passed=111 failed=0 skipped=0 seconds=5.4
+- tests full passed=111 failed=0 skipped=0 seconds=4.7
+- Ruling: final-review finding 1 (8 x run_tests fatalError) - these were `swift test` build failures while parallel agents had half-written files; the final full run exits clean with 111 passed, 0 failed, and swift/Sources has no fatalError calls - cost: none
+- Ruling: final-review finding 2 (isGeometricCandidate missing) - present at Similarity.swift:32 with the plan signature, examples asserted in SimilarityTests.swift:44-45; contract checker false negative - cost: none
+- Ruling: final-review finding 3 - plan T3 text corrected to angle 90
+- parity T8: keypoints 755 vs cv2 757, top-200 100% within 1.5 px, descriptor median cosine 0.999998, scene a/b 0.9880 vs 0.9882, a/c 0.0120
+- full suite: 111 passed, 0 failed
