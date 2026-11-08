@@ -142,6 +142,7 @@ private func get(_ database: String) throws -> JSONValue? {
     try LayoutStore.loadLayout(Database.open(path: database), albumId: integrationAlbum)
 }
 
+extension LayoutSeamSuites {
 @Suite(.serialized) struct LayoutIntegrationTests {
     @Test func integrationFullFlowOnSyntheticLibrary() throws {
         resetIntegration()
@@ -328,4 +329,5 @@ private func get(_ database: String) throws -> JSONValue? {
         if case .integer(let n)? = rows.first?["n"] { #expect(n > 0) } else { Issue.record("no scan count") }
         _ = try JSONEncoder().encode(layout)
     }
+}
 }

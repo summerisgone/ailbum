@@ -113,6 +113,7 @@ private func edAspectCrop(_ photoAspect: Double, _ index: Int, _ scale: Double =
 
 private func edJSON(_ crop: [String: Double]) -> JSONValue { .object(crop.mapValues { .double($0) }) }
 
+extension LayoutSeamSuites {
 @Suite(.serialized) final class LayoutEditingTests {
     let db: Database
     let path: String
@@ -481,4 +482,5 @@ private func edJSON(_ crop: [String: Double]) -> JSONValue { .object(crop.mapVal
             }
         }
     }
+}
 }

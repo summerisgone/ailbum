@@ -135,6 +135,9 @@ private func placedIds(_ layout: JSONValue) -> [Int] {
     return ids
 }
 
+@Suite(.serialized) enum LayoutSeamSuites {}
+
+extension LayoutSeamSuites {
 @Suite(.serialized) struct LayoutServiceTests {
     @Test func servicePreflightCountsUnitsNotPhotos() throws {
         resetFakes()
@@ -346,4 +349,5 @@ private func placedIds(_ layout: JSONValue) -> [Int] {
         #expect(paths[1] == proxy)
         #expect(paths[2] != nil && paths[2] != proxy)
     }
+}
 }
