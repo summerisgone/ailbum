@@ -39,9 +39,12 @@ import Testing
     }
 
     @Test func testDateLabel() {
-        #expect(PhotoGrouping.dateLabel("2026-07-28T20:49:55") == "28 июля 2026 г.")
-        #expect(PhotoGrouping.dateLabel("2026-01-05") == "5 января 2026 г.")
-        #expect(PhotoGrouping.dateLabel("Без даты") == "Без даты")
+        #expect(PhotoGrouping.dateLabel("2026-07-28T20:49:55").date == "28 июля 2026 г.")
+        #expect(PhotoGrouping.dateLabel("2026-07-28T20:49:55").weekday == "вторник")
+        #expect(PhotoGrouping.dateLabel("2026-01-05").date == "5 января 2026 г.")
+        #expect(PhotoGrouping.dateLabel("2026-01-05").weekday == "понедельник")
+        #expect(PhotoGrouping.dateLabel("Без даты").date == "Без даты")
+        #expect(PhotoGrouping.dateLabel("Без даты").weekday == "")
     }
 
     @Test func testStoryPeriodLabel() {
@@ -60,7 +63,7 @@ import Testing
         #expect(PhotoGrouping.score(photo(1, quality: 0.865)) == 87)
         #expect(PhotoGrouping.score(photo(1, quality: 0.5)) == 50)
         #expect(PhotoGrouping.score(photo(1, quality: 0.004)) == 0)
-        #expect(PhotoGrouping.score(photo(1, quality: nil)) == -1)
+        #expect(PhotoGrouping.score(photo(1, quality: nil)) == nil)
     }
 
     @Test func testIsPortrait() {
@@ -109,6 +112,13 @@ import Testing
         #expect(out[1].count == 2)
         #expect(out[2].story.title == "Без сюжета")
         #expect(out[2].story.started_at == "2026-07-01T10:00:00")  // modified_at fallback
+    }
+
+    @Test func testDuplicateStoryIdLastWins() {
+        let a = Story(id: 1, title: "A", started_at: nil, ended_at: nil, representative_image_id: nil, photo_count: 1, naming_model: nil)
+        let b = Story(id: 1, title: "B", started_at: nil, ended_at: nil, representative_image_id: nil, photo_count: 2, naming_model: nil)
+        let out = PhotoGrouping.sections(photos: [photo(1)], stories: [a, b], expandedSeries: [])
+        #expect(out[0].story.title == "B")
     }
 
     @Test func testExpandedSeries() {

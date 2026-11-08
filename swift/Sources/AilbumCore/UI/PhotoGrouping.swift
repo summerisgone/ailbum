@@ -63,11 +63,11 @@ public enum PhotoGrouping {
         return Stamp(wall: wall, offset: offset)
     }
 
-    /// DAY_FORMAT (ru-RU, day numeric, month long, year numeric) of a "yyyy-MM-dd" date; "Без даты" is returned as is.
-    public static func dateLabel(_ value: String) -> String {
-        if value == noDate { return value }
-        guard let stamp = parse(String(value.prefix(10))) else { return value }
-        return formatter("d MMMM y '\u{0433}'.").string(from: stamp.wall)
+    /// DAY_FORMAT + WEEKDAY_FORMAT (ru-RU) of a "yyyy-MM-dd" date; "Без даты" is returned as date with empty weekday.
+    public static func dateLabel(_ value: String) -> (date: String, weekday: String) {
+        if value == noDate { return (value, "") }
+        guard let stamp = parse(String(value.prefix(10))) else { return (value, "") }
+        return (formatter("d MMMM y '\u{0433}'.").string(from: stamp.wall), formatter("EEEE").string(from: stamp.wall))
     }
 
     public static func storyPeriodLabel(_ story: Story) -> String {
@@ -88,9 +88,9 @@ public enum PhotoGrouping {
         return "\(day.string(from: start.wall)) \u{2014} \(day.string(from: end.wall))"
     }
 
-    /// Math.round(quality * 100); -1 when quality is nil (TS: null).
-    public static func score(_ photo: Photo) -> Double {
-        guard let q = photo.quality else { return -1 }
+    /// Math.round(quality * 100); nil when quality is nil (TS: null).
+    public static func score(_ photo: Photo) -> Double? {
+        guard let q = photo.quality else { return nil }
         return (q * 100 + 0.5).rounded(.down)
     }
 
@@ -133,7 +133,7 @@ public enum PhotoGrouping {
 
     public static func sections(photos: [Photo], stories: [Story], expandedSeries: Set<String>) -> [GridSection] {
         var storyById: [Int: Story] = [:]
-        for s in stories where storyById[s.id] == nil { storyById[s.id] = s }
+        for s in stories { storyById[s.id] = s }
         var order: [Int] = []
         var groups: [Int: [Photo]] = [:]
         for photo in photos {
