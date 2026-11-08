@@ -197,4 +197,14 @@ struct DesktopJobTests {
         #expect(p.assistant == "auto" && p.maxPhotos == 3 && p.spreadCount == 2)
         #expect(p.prompt.unicodeScalars.count == 500)
     }
+
+    @Test func progressDotDoesNotCrossNewlineAndFalsyPromptIsEmpty() throws {
+        #expect(DesktopJob.progressEvent("[3/10] a\nb", defaultStage: "x")
+            == ["type": "progress", "stage": "Обработка", "detail": "[3/10] a\nb"])
+        #expect(DesktopJob.progressEvent("Этап: Лица | 5\nx", defaultStage: "x")["stage"] == "Обработка")
+        for falsy in ["[]", "{}", "0", "0.0", "false", "null", "\"\""] {
+            let p = try DesktopJob.layoutParams("{\"orientation\":\"h\",\"spread_count\":1,\"min_photos\":1,\"max_photos\":2,\"prompt\":\(falsy)}")
+            #expect(p.prompt == "")
+        }
+    }
 }

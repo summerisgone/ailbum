@@ -18,7 +18,7 @@ public enum DesktopJob {
     // MARK: progress
 
     private static func capture(_ pattern: String, _ message: String) -> [String?]? {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else { return nil }
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
         let ns = message as NSString
         guard let m = re.firstMatch(in: message, range: NSRange(location: 0, length: ns.length)) else { return nil }
         return (1..<m.numberOfRanges).map { i in
@@ -65,6 +65,18 @@ public enum DesktopJob {
         }
     }
 
+    private static func pyFalsy(_ v: JSONValue) -> Bool {
+        switch v {
+        case .null: return true
+        case .bool(let b): return !b
+        case .int(let i): return i == 0
+        case .double(let d): return d == 0
+        case .string(let s): return s.isEmpty
+        case .array(let a): return a.isEmpty
+        case .object(let o): return o.isEmpty
+        }
+    }
+
     private static func pyStr(_ v: JSONValue) -> String {
         switch v {
         case .string(let s): return s
@@ -90,7 +102,7 @@ public enum DesktopJob {
         let maxPhotos = try pyInt(o["max_photos"], "max_photos")
         let assistant = o["assistant"].map(pyStr) ?? "auto"
         var prompt = ""
-        if let p = o["prompt"], p != .null, p != .string(""), p != .bool(false), p != .int(0) { prompt = pyStr(p) }
+        if let p = o["prompt"], !pyFalsy(p) { prompt = pyStr(p) }
         return LayoutParams(
             orientation: pyStr(orientation), spreadCount: spread, minPhotos: minPhotos, maxPhotos: maxPhotos,
             assistant: assistant, prompt: String(String.UnicodeScalarView(prompt.unicodeScalars.prefix(Preferences.maxPrompt))))
