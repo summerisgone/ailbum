@@ -1,0 +1,1 @@
+{"file": "swift/Sources/AilbumCore/Layout/Preferences.swift", "line": 23, "context": "ICU w/b treat combining marks as word chars; Python does not; explicit classes", "agent": "reviewer", "kind": "test-failure", "resolution": "fixed", "confidence": "high", "time": "11:13:14"}

@@ -1,0 +1,38 @@
+- start cc351f484caa2e316e9ec176ff77f737e23d4802
+- unblocked: dispatched T4 T7 at 11:05:39; waiting on fixes: T1 T2 T3 T5 T6 T8 T9 T10 T11 T12 T13
+- Ruling: no Wave 0 stubs in 4c - consumers dispatch after producers commit, as in 4a/4b - cost: longer chain
+- Ruling: T1 is sonnet/design, not mechanical - no verbatim test code - cost: none.
+- Ruling: plan size 20k and spec sections 1-2 uncovered accepted - same as 4b; sections 1-2 are decisions/toolchain facts, not work - cost: larger prime.
+- unblocked: dispatched T1 (T2,T3,T5,T6,T8 wait for T1 commit, no stubs) at $(date +%H:%M:%S)
+- T1 committed b2db061
+- T4 committed c8fe68c
+- T7 committed e2e1d95
+- T5 committed bea0618
+- Ruling: plan example parse("больше лиц") is faces 1.0 per Python, test follows Python - cost: none
+- Ruling: Preferences.apply sums in dict order, not insertion order - last-bit float difference only with 2+ axes - cost: rare tie flip in ranking
+- T2 committed a277f4c
+- T3 committed 6666594
+- unblocked: dispatched T9 T11 at 11:09:08
+- T6 committed 397c332
+- Ruling: LayoutStore JSON keys sorted (JSONValue is unordered); Python insertion order differs only in key order of unplaced/warnings blobs, which are read back as objects - cost: byte-different JSON text, same data
+- Ruling: JSONValue.parse reads 1.0 as int in unplaced/warnings blobs - consumers use doubleValue which accepts ints - cost: none
+- unblocked: dispatched T8 at 11:09:33
+- T9 committed 0d11674
+- T11 committed b279a12
+- T8 committed fe485e6
+- unblocked: dispatched T10 T12 at 11:13:18
+- review core committed 726e7e6
+- review storage+engine committed 6e9b2a1; no defects
+- Ruling: export copyItem on a directory source and string-typed subject bbox numbers left as minor divergences - neither occurs in DB data written by ailbum - cost: none expected
+- T12 committed de9372b
+- Ruling: LayoutService.Progress keeps Python's 4-arg callback (stage, message, done, total), not the plan's JSONValue - parity with Python - cost: none
+- Ruling: modelsDir only gates detector availability; YOLOX loads via ModelStore (AILBUM_MODELS_DIR / swift/Models) as in phase 3 - cost: a modelsDir pointing elsewhere than ModelStore's dir is ignored for loading
+- T10 committed f1cf69a
+- unblocked: dispatched T13 + review T10-T12 at 11:17:49
+- T13 committed 54e42af
+- Ruling: real-detector integration test gated on ModelStore.available("yolox") - mirrors Python skip on missing model - cost: none
+- review T10-T12 committed (pyStrip, hex crop rejected)
+- Ruling: accept NaN in LM reply, warnings_json escaping, float("1_0") divergences - loaded results identical / inputs unrealistic - cost: rare error text differences
+- Ruling: Editing reads without transaction, unplaced keys sorted - matches Python observable result - cost: none
+- Ruling: final-review Crop contract finding is a checker false positive - Crop.evaluate/solve exist with the planned labels (Crop.swift:46,99; evaluate signature spans lines) - cost: none
+- final: seam race fixed (LayoutSeamSuites), full suite 526/526 green x2
