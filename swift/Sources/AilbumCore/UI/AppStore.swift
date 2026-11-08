@@ -68,15 +68,20 @@ public final class AppStore {
     private func call(_ action: String, _ payload: JSONValue = [:]) async throws -> JSONValue {
         guard let database else { throw AilbumError.invalid("База данных не выбрана") }
         let bridge = AppStore.bridge
-        return try await Task.detached { try bridge(database, action, payload) }.value
+        let result = try await Task.detached { try bridge(database, action, payload) }.value
+        // The database was switched while the call ran: the answer belongs to the old one.
+        guard self.database == database else { throw StaleDatabase() }
+        return result
     }
 
     private func call<T: Decodable>(_ type: T.Type, _ action: String, _ payload: JSONValue = [:]) async throws -> T {
         try AppModels.decode(type, try await call(action, payload))
     }
 
+    private struct StaleDatabase: Error {}
+
     private func guarded(_ body: () async throws -> Void) async {
-        do { try await body() } catch { self.error = AppStore.message(error) }
+        do { try await body() } catch is StaleDatabase {} catch { self.error = AppStore.message(error) }
     }
 
     private func applyLibrary(_ next: Library) {
@@ -161,6 +166,7 @@ public final class AppStore {
             let result = try await call(FavoriteResult.self, "favorite.set",
                 ["album_id": .int(album.id), "image_id": .int(imageId), "favorite": .bool(favorite)])
             library?.selected_count = result.selected_count
+        } catch is StaleDatabase {
         } catch {
             library = current
             self.error = AppStore.message(error)
@@ -245,6 +251,7 @@ public final class AppStore {
             if outcome != .cancelled { archiveNote = outcome }
             try await loadLibrary(albumId: albumId)
             try await refreshAlbums()
+        } catch is StaleDatabase {
         } catch { self.error = AppStore.message(error) }
         albumBusy = false
         return outcome
@@ -412,6 +419,16 @@ public final class AppStore {
 
     // MARK: Images
 
+    /// Longest side that fits the oriented image into a box without upscaling.
+    private nonisolated static func boxPixel(source: CGImageSource?, box: (w: Double, h: Double)) -> Int? {
+        guard let source, let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              var h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, w > 0, h > 0 else { return nil }
+        if let o = (props[kCGImagePropertyOrientation] as? NSNumber)?.intValue, o >= 5 { swap(&w, &h) }
+        let scale = min(box.w / w, box.h / h, 1)
+        return max(1, Int((max(w, h) * scale).rounded()))
+    }
+
     private nonisolated static func decodeImage(source: CGImageSource?, maxPixel: Int) -> CGImage? {
         guard let source else { return nil }
         let options: [CFString: Any] = [
@@ -422,20 +439,24 @@ public final class AppStore {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
-    private func fileImage(imageId: Int, maxPixel: Int, key: String?) async -> CGImage? {
+    private func fileImage(imageId: Int, maxPixel: Int, box: (w: Double, h: Double)? = nil, key: String?) async -> CGImage? {
         if let key, let hit = cache.object(forKey: key as NSString) { return hit }
         guard let path = mediaPaths[imageId] else { return nil }
         let image = await Task.detached { () -> CGImage? in
             guard FileManager.default.fileExists(atPath: path) else { return nil }
-            return AppStore.decodeImage(source: CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil), maxPixel: maxPixel)
+            let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil)
+            let side = box.flatMap { AppStore.boxPixel(source: source, box: $0) } ?? maxPixel
+            return AppStore.decodeImage(source: source, maxPixel: side)
         }.value
+        // The catalog was reloaded meanwhile: do not cache or return a stale image.
+        guard mediaPaths[imageId] == path else { return nil }
         if let image, let key { cache.setObject(image, forKey: key as NSString) }
         return image
     }
 
-    /// 720x480 box thumbnail, cached (limit 300).
+    /// Fits a 720x480 box, cached (limit 300).
     public func thumbnail(imageId: Int) async -> CGImage? {
-        await fileImage(imageId: imageId, maxPixel: 720, key: "photo-\(imageId)")
+        await fileImage(imageId: imageId, maxPixel: 720, box: (720, 480), key: "photo-\(imageId)")
     }
 
     public func original(imageId: Int) async -> CGImage? {

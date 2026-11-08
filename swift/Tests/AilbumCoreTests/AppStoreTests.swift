@@ -271,7 +271,12 @@ private final class CallLog: @unchecked Sendable {
         store.mediaPaths[1] = file
         let thumb = await store.thumbnail(imageId: 1)
         #expect(thumb != nil)
-        #expect(max(thumb!.width, thumb!.height) == 720)
+        #expect(thumb!.width == 640 && thumb!.height == 480)
+        let tall = dir + "/tall.png"
+        try writePNG(tall, width: 1200, height: 1600)
+        store.mediaPaths[2] = tall
+        let tallThumb = await store.thumbnail(imageId: 2)
+        #expect(tallThumb!.width == 360 && tallThumb!.height == 480)
         #expect(await store.thumbnail(imageId: 99) == nil)
         #expect(AppStore.thumbnailCacheLimit == 300)
         let original = await store.original(imageId: 1)
@@ -290,6 +295,41 @@ private final class CallLog: @unchecked Sendable {
         let store = try makeStore("/tmp/never-opened.db")
         let img = await store.faceThumbnail(faceId: 5)
         #expect(img?.width == 40)
+    }
+
+    @Test func staleAnswerAfterDatabaseSwitchIsDropped() async throws {
+        let db = try storePopulate()
+        let other = try storeTempDir() + "/other.db"
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        AppStore.bridge = { database, action, _ in
+            if action == "album.list", database == db {
+                started.signal(); release.wait()
+                return [["id": 99]]
+            }
+            return [:]
+        }
+        defer { AppStore.resetSeams() }
+        let store = try makeStore(db)
+        let task = Task { await store.listAlbums() }
+        await Task.detached { started.wait() }.value
+        await store.openDatabase(path: other)
+        release.signal()
+        await task.value
+        #expect(store.albums.isEmpty)
+        #expect(store.error == nil || !store.error!.contains("99"))
+        #expect(store.database == URL(fileURLWithPath: other).path)
+    }
+
+    @Test func staleThumbnailAfterReloadIsNotReturned() async throws {
+        let dir = try storeTempDir()
+        let file = dir + "/a.png"
+        try writePNG(file, width: 100, height: 100)
+        let store = try makeStore("/tmp/never-opened.db")
+        store.mediaPaths[1] = file
+        let task = Task { await store.thumbnail(imageId: 1) }
+        store.mediaPaths = [:]
+        #expect(await task.value == nil)
     }
 
     @Test func peopleAndLayoutPayloads() async throws {
