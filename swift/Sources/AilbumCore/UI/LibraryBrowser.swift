@@ -25,8 +25,27 @@ public struct PhotoTile: Equatable, Identifiable, Sendable {
 
 /// Read-only view of a library database for the preview window.
 public enum LibraryBrowser {
+    /// Creates a fresh library at `path` (the only call allowed to create a file).
+    public static func create(database: String) throws {
+        guard !FileManager.default.fileExists(atPath: database)
+                || ((try? FileManager.default.attributesOfItem(atPath: database)[.size] as? Int) ?? 0) == 0
+        else { throw AilbumError.invalid("Database already exists: \(database)") }
+        _ = try Database.open(path: database)
+    }
+
+    /// Opens an existing ailbum database; never creates a file or stamps a foreign sqlite file.
+    static func openExisting(_ database: String) throws -> Database {
+        guard let size = try? FileManager.default.attributesOfItem(atPath: database)[.size] as? Int else {
+            throw AilbumError.invalid("Database does not exist: \(database)")
+        }
+        if size > 0, try Database(path: database).userVersion() == 0 {
+            throw AilbumError.invalid("Not an ailbum database: \(database)")
+        }
+        return try Database.open(path: database)
+    }
+
     public static func albums(database: String) throws -> [AlbumRow] {
-        let db = try Database.open(path: database)
+        let db = try openExisting(database)
         return try (Albums.list(db).arrayValue ?? []).map { a in
             AlbumRow(id: a["id"]?.intValue ?? 0, title: a["title"]?.stringValue ?? "",
                      status: a["status"]?.stringValue ?? "", selected: a["photo_count"]?.intValue ?? 0,
@@ -36,7 +55,7 @@ public enum LibraryBrowser {
 
     /// `albumId == nil` lists every indexed image; otherwise the album's run photos plus its members.
     public static func photos(database: String, albumId: Int?) throws -> [PhotoTile] {
-        let db = try Database.open(path: database)
+        let db = try openExisting(database)
         var rows: [[String: SQLValue]]
         if let albumId {
             rows = try db.query(

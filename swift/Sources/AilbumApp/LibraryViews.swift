@@ -27,13 +27,14 @@ final class LibraryModel: ObservableObject {
             tiles = try LibraryBrowser.photos(database: database, albumId: selectedAlbum)
             error = nil
         } catch {
+            albums = []; tiles = []
             self.error = "\(error)"
         }
     }
 
     func open() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "sqlite3") ?? .data]
+        panel.allowedContentTypes = ["sqlite3", "sqlite", "db"].compactMap { UTType(filenameExtension: $0) }
         panel.canChooseDirectories = false
         if panel.runModal() == .OK, let url = panel.url { setDatabase(url.path) }
     }
@@ -42,7 +43,9 @@ final class LibraryModel: ObservableObject {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "sqlite3") ?? .data]
         panel.nameFieldStringValue = "ailbum.sqlite3"
-        if panel.runModal() == .OK, let url = panel.url { setDatabase(url.path) }
+        if panel.runModal() == .OK, let url = panel.url {
+            do { try LibraryBrowser.create(database: url.path); setDatabase(url.path) } catch { self.error = "\(error)" }
+        }
     }
 }
 
@@ -103,7 +106,7 @@ struct ThumbnailView: View {
         .clipped()
         .task(id: tile.path) {
             guard let path = tile.path else { image = nil; return }
-            image = await Task.detached(priority: .utility) { downscaled(path: path, maxPixel: 256) }.value
+            image = await ThumbnailLoader.load(path: path)
         }
     }
 }
@@ -118,4 +121,41 @@ private func downscaled(path: String, maxPixel: Int) -> NSImage? {
     ]
     guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { return nil }
     return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+}
+
+/// Bounded decode: at most 4 concurrent 256 px decodes, cancelled tiles skip work, cache capped at 300 images.
+enum ThumbnailLoader {
+    private static let queue: OperationQueue = {
+        let q = OperationQueue()
+        q.maxConcurrentOperationCount = 4
+        q.qualityOfService = .utility
+        return q
+    }()
+    private static let cache: NSCache<NSString, NSImage> = {
+        let c = NSCache<NSString, NSImage>()
+        c.countLimit = 300
+        return c
+    }()
+
+    private final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
+        func set() { lock.lock(); value = true; lock.unlock() }
+    }
+
+    static func load(path: String) async -> NSImage? {
+        if let hit = cache.object(forKey: path as NSString) { return hit }
+        let cancelled = Flag()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<NSImage?, Never>) in
+                queue.addOperation {
+                    if cancelled.isSet { c.resume(returning: nil); return }
+                    let image = downscaled(path: path, maxPixel: 256)
+                    if let image { cache.setObject(image, forKey: path as NSString) }
+                    c.resume(returning: image)
+                }
+            }
+        } onCancel: { cancelled.set() }
+    }
 }

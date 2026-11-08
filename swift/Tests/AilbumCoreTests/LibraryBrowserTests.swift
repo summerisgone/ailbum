@@ -48,9 +48,22 @@ private func lbInsert(_ db: Database, id: Int, path: String, avail: String = "pr
         #expect(try LibraryBrowser.albums(database: path).first?.selected == 1)
     }
 
-    @Test func browserCreatesMissingDatabase() throws {
+    @Test func browserMissingDatabaseThrowsWithoutCreating() throws {
         let path = try lbTempDir() + "/new.sqlite3"
+        #expect(throws: AilbumError.self) { try LibraryBrowser.albums(database: path) }
+        #expect(throws: AilbumError.self) { try LibraryBrowser.photos(database: path, albumId: nil) }
+        #expect(!FileManager.default.fileExists(atPath: path))
+        try LibraryBrowser.create(database: path)
         #expect(try LibraryBrowser.albums(database: path).isEmpty)
-        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(throws: AilbumError.self) { try LibraryBrowser.create(database: path) }
+    }
+
+    @Test func browserRejectsForeignSqliteWithoutStamping() throws {
+        let path = try lbTempDir() + "/foreign.db"
+        let raw = try Database(path: path)
+        try raw.execute("CREATE TABLE t (x INTEGER)", [])
+        #expect(throws: AilbumError.self) { try LibraryBrowser.albums(database: path) }
+        #expect(try Database(path: path).userVersion() == 0)
+        #expect(try Database(path: path).query("SELECT name FROM sqlite_master", []).count == 1)
     }
 }
