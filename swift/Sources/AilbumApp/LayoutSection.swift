@@ -88,7 +88,7 @@ struct LayoutSection: View {
         if let spread = layout?.spreads.first(where: { $0.id == target.id }) {
             VStack(spacing: 0) {
                 HStack { Spacer(); Button("Закрыть") { editing = nil }.keyboardShortcut(.cancelAction) }.padding(8)
-                LayoutEditor(store: store, spread: spread)
+                LayoutEditor(store: store, spread: spread, aspect: layout.map { $0.format.spread_w_mm / $0.format.spread_h_mm } ?? 1.5)
             }
             .frame(minWidth: 900, minHeight: 640)
         }
@@ -521,7 +521,7 @@ private struct AlbumPreview: View {
         self.mode = mode
         _page = State(initialValue: mode == .book ? startSpread + 1 : startSpread)
         let saved = UserDefaults.standard.double(forKey: Self.scaleKey)
-        _pxPerMm = State(initialValue: saved > 1 && saved < 20 ? saved : 72.0 / 25.4)
+        _pxPerMm = State(initialValue: saved > 1 && saved < 20 ? saved : 127.0 / 25.4)
     }
 
     private var book: Bool { mode == .book }

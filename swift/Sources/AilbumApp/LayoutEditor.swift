@@ -19,9 +19,7 @@ private struct EditorThumb: View {
 }
 
 private func makeRect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> LayoutRect {
-    var r = (try? JSONDecoder().decode(LayoutRect.self, from: Data(#"{"x":0,"y":0,"w":1,"h":1}"#.utf8)))!
-    r.x = x; r.y = y; r.w = w; r.h = h
-    return r
+    LayoutRect(x: x, y: y, w: w, h: h)
 }
 
 private func zoomOf(_ crop: LayoutRect) -> Double { 1 / max(0.0001, min(crop.w, crop.h)) }
@@ -51,8 +49,11 @@ struct LayoutEditor: View {
     @State private var message: String?
     @State private var dragStart: Int?
 
-    init(store: AppStore, spread: LayoutSpread, onChange: @escaping (LayoutSpread) -> Void = { _ in }) {
+    let aspect: Double
+
+    init(store: AppStore, spread: LayoutSpread, aspect: Double = 1.5, onChange: @escaping (LayoutSpread) -> Void = { _ in }) {
         self.store = store
+        self.aspect = aspect
         self.onChange = onChange
         _spread = State(initialValue: spread)
     }
@@ -125,7 +126,7 @@ struct LayoutEditor: View {
                 }
             )
         }
-        .aspectRatio(1.5, contentMode: .fit)
+        .aspectRatio(aspect, contentMode: .fit)
     }
 
     private func hit(_ p: CGPoint, _ size: CGSize) -> Int? {
@@ -234,7 +235,7 @@ struct LayoutEditor: View {
                 }
             }
         }
-        .aspectRatio(1.5, contentMode: .fit)
+        .aspectRatio(aspect, contentMode: .fit)
     }
 
     @ViewBuilder private var cellSection: some View {
@@ -340,7 +341,7 @@ struct LayoutEditor: View {
                 message = nil
                 version += 1
             } catch {
-                message = error.localizedDescription
+                message = AppStore.message(error)
             }
         }
     }
@@ -354,7 +355,7 @@ struct LayoutEditor: View {
             let sim = try await store.layoutSimilar(spreadId: spread.id, cellIndex: index)
             if !Task.isCancelled { similar = sim }
         } catch {
-            if !Task.isCancelled { message = error.localizedDescription }
+            if !Task.isCancelled { message = AppStore.message(error) }
         }
     }
 
@@ -364,7 +365,7 @@ struct LayoutEditor: View {
             let items = try await store.layoutVariants(spreadId: spread.id)
             if !Task.isCancelled { variants = items }
         } catch {
-            if !Task.isCancelled { message = error.localizedDescription }
+            if !Task.isCancelled { message = AppStore.message(error) }
         }
     }
 

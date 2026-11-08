@@ -222,6 +222,10 @@ public struct LayoutRect: Codable, Equatable, Sendable {
     public var y: Double
     public var w: Double
     public var h: Double
+
+    public init(x: Double, y: Double, w: Double, h: Double) {
+        self.x = x; self.y = y; self.w = w; self.h = h
+    }
 }
 
 public struct LayoutTemplateCell: Codable, Equatable, Sendable {
@@ -291,6 +295,11 @@ public struct LayoutCell: Codable, Equatable, Sendable {
     public var h: Double
     public var crosses_spine: Bool
     public var placement: LayoutPlacement?
+
+    public init(index: Int, x: Double, y: Double, w: Double, h: Double, crosses_spine: Bool, placement: LayoutPlacement? = nil) {
+        self.index = index; self.x = x; self.y = y; self.w = w; self.h = h
+        self.crosses_spine = crosses_spine; self.placement = placement
+    }
 }
 
 public struct LayoutSpread: Codable, Equatable, Sendable {

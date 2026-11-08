@@ -14,13 +14,6 @@ private func faceDate(_ value: String?) -> String {
     return date.formatted(.dateTime.day().month(.abbreviated).year().locale(Locale(identifier: "ru")))
 }
 
-private func peopleErrorText(_ error: Error) -> String {
-    switch error {
-    case AilbumError.invalid(let s), AilbumError.sqlite(let s), AilbumError.decode(let s), AilbumError.metal(let s): return s
-    default: return error.localizedDescription
-    }
-}
-
 struct PeopleSection: View {
     let store: AppStore
 
@@ -251,7 +244,7 @@ struct PeopleSection: View {
             collection = next
             nameDraft = next.person?.name ?? ""
         } catch {
-            store.error = peopleErrorText(error)
+            store.error = AppStore.message(error)
         }
     }
 

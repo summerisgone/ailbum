@@ -28,10 +28,7 @@ struct DatabaseSection: View {
     }
 
     private func refreshSummary() async {
-        do { summary = try await store.getDatabaseSummary() } catch { switch error {
-            case AilbumError.invalid(let m), AilbumError.sqlite(let m), AilbumError.decode(let m), AilbumError.metal(let m): store.error = m
-            default: store.error = error.localizedDescription
-            } }
+        do { summary = try await store.getDatabaseSummary() } catch { store.error = AppStore.message(error) }
     }
 
     private func addFolders(_ paths: [String]) {

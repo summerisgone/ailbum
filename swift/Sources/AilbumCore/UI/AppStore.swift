@@ -57,7 +57,7 @@ public final class AppStore {
 
     // MARK: Plumbing
 
-    static func message(_ error: Error) -> String {
+    nonisolated public static func message(_ error: Error) -> String {
         switch error {
         case AilbumError.invalid(let s), AilbumError.sqlite(let s), AilbumError.decode(let s), AilbumError.metal(let s): return s
         default: return error.localizedDescription

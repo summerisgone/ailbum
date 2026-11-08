@@ -175,3 +175,18 @@ private func roundTrip<T: Codable & Equatable>(_ value: T) throws -> T {
         #expect(try roundTrip(full) == full)
     }
 }
+
+@Test func layoutRectMemberwiseInitRoundTripsWithKeys() throws {
+    let rect = LayoutRect(x: 0.1, y: 0.2, w: 0.5, h: 0.6)
+    let data = try JSONEncoder().encode(rect)
+    let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Double])
+    #expect(Set(object.keys) == ["x", "y", "w", "h"])
+    #expect(object["w"] == 0.5)
+    #expect(try JSONDecoder().decode(LayoutRect.self, from: data) == rect)
+    let cell = LayoutCell(index: 1, x: 0, y: 0, w: 1, h: 1, crosses_spine: false)
+    #expect(cell.placement == nil)
+}
+
+@Test func storeErrorMessageIsPublicAndUnwrapsAilbumError() {
+    #expect(AppStore.message(AilbumError.invalid("плохо")) == "плохо")
+}
