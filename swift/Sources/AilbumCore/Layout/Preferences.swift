@@ -20,10 +20,10 @@ public enum Preferences {
         ("closeups", regex("крупн|портрет|детал")),
         (
             "landscapes",
-            regex("пейзаж|природ|панорам|архитектур|город|море|моря|горы|гор\\b|общ\\w* план|вид(ы|ов)?\\b")
+            regex("пейзаж|природ|панорам|архитектур|город|море|моря|горы|гор(?![\\p{L}\\p{N}_])|общ[\\p{L}\\p{N}_]* план|вид(ы|ов)?(?![\\p{L}\\p{N}_])")
         ),
     ]
-    private static let negative = regex("(^|\\s)(не|без|меньше|поменьше|убери\\w*|исключ\\w*|кроме|вместо)(\\s|$)")
+    private static let negative = regex("(^|\\s)(не|без|меньше|поменьше|убери[\\p{L}\\p{N}_]*|исключ[\\p{L}\\p{N}_]*|кроме|вместо)(\\s|$)")
     private static let clauses = regex("[,.;:!?\\n]+|\\s+(?:а|но|зато)\\s+")
 
     private static func matches(_ re: NSRegularExpression, _ s: String) -> Bool {
