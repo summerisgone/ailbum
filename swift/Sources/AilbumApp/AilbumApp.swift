@@ -17,8 +17,8 @@ struct AilbumApp: App {
 
     var body: some Scene {
         WindowGroup("Ailbum") {
-            LibraryView()
-                .frame(minWidth: 800, minHeight: 500)
+            AppShell()
+                .frame(minWidth: 1000, minHeight: 650)
         }
     }
 }
