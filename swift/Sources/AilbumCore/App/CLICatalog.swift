@@ -95,7 +95,15 @@ public enum CLICatalog {
             guard let sub = rest.first, ["list", "show", "name", "merge", "compose"].contains(sub) else { return nil }
             return try people(sub, Array(rest.dropFirst()), out: out)
         case "models", "download-models":
-            _ = try parse(rest, valueOptions: ["--models-dir": "models-dir"], flagOptions: [:])
+            let p = try parse(rest, valueOptions: ["--models-dir": "models-dir"], flagOptions: [:])
+            try exactly(p, [])
+            let previous = getenv("AILBUM_MODELS_DIR").map { String(cString: $0) }
+            if let dir = p.values["models-dir"] { setenv("AILBUM_MODELS_DIR", dir, 1) }
+            defer {
+                if p.values["models-dir"] != nil {
+                    if let previous { setenv("AILBUM_MODELS_DIR", previous, 1) } else { unsetenv("AILBUM_MODELS_DIR") }
+                }
+            }
             for name in modelNames {
                 out("\(name)\t\(ModelStore.available(name) ? "доступна" : "отсутствует")")
             }

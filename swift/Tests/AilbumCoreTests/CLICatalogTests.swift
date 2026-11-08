@@ -173,6 +173,16 @@ private func saveRun(_ env: Env, _ runId: String, _ embedding: [Float], _ bbox: 
         #expect(rows[0] == "yunet\t\(ModelStore.available("yunet") ? "доступна" : "отсутствует")")
     }
 
+    @Test func testModelsCommandHonorsModelsDir() throws {
+        let dir = try tmpDir()
+        try FileManager.default.createDirectory(atPath: dir + "/sface.mlpackage", withIntermediateDirectories: true)
+        let r = try call(["models", "--models-dir", dir])
+        let rows = r.out.split(separator: "\n").map(String.init)
+        #expect(rows[0] == "yunet\tотсутствует")
+        #expect(rows[1] == "sface\tдоступна")
+        #expect(getenv("AILBUM_MODELS_DIR") == nil)
+    }
+
     @Test func testCompareCommand() throws {
         let dir = try tmpDir()
         try writeJPEG(dir + "/a.jpg", red: 80)
