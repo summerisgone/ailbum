@@ -240,6 +240,22 @@ private func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
         #expect(p[3]!.rank < p[4]!.rank)
     }
 
+    @Test func factsRankMatchesPythonGolden() throws {
+        let db = try makeFactsDB()
+        try addImage(db, 5, selected: true, quality: 0.6, aesthetic: 0.8)
+        try addFace(db, 5, [1, 1, 5, 5], smile: 0.9, index: 0)
+        try addFace(db, 5, [10, 1, 5, 5], smile: 0.5, index: 1)
+        try addFace(db, 5, [20, 1, 5, 5], closed: true, smile: nil, index: 2)
+        try addImage(db, 6, selected: true, cluster: 3, quality: 0.6, aesthetic: nil)
+        try addImage(db, 7, selected: false, cluster: 3, quality: 0.6, aesthetic: nil)
+        try addFace(db, 7, [1, 1, 5, 5], smile: 0.9, index: 0)
+        try addFace(db, 7, [10, 1, 5, 5], smile: 0.2, index: 1)
+        let p = Dictionary(uniqueKeysWithValues: try pool(db).map { ($0.imageId, $0) })
+        // Python _rank goldens: 0.6166666666666667 and 0.53.
+        #expect(near(p[5]!.rank, 0.6166666666666667))
+        #expect(near(p[7]!.rank, 0.53))
+    }
+
     @Test func factsRankClamped() throws {
         let db = try makeFactsDB()
         try addImage(db, 1, quality: 1.0, aesthetic: 1.0)
