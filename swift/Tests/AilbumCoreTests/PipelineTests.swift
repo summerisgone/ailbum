@@ -201,3 +201,41 @@ private func count(_ db: String, _ sql: String) throws -> Int {
         #expect(manifest["photos"]?[0]?["error"] == .null)
     }
 }
+
+@Suite(.serialized) struct PipelinePeopleSyncTests {
+    @Test func syncPeopleCopiesDatabaseIdsBackIntoRecordsAndPeople() throws {
+        let dir = Catalog.resolve(NSTemporaryDirectory()) + "/ailbum-sync-\(UUID().uuidString)"
+        let src = dir + "/src"
+        try FileManager.default.createDirectory(atPath: src, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let dbPath = dir + "/c.sqlite3"
+        let m = ImageMetadata(
+            path: src + "/1.jpg", sourceRoot: src, relativePath: "1.jpg", fileName: "1.jpg", extension: ".jpg",
+            fileSizeBytes: 10, modifiedAt: "2024-05-01T10:00:00", sha256: "s1", width: 40, height: 30,
+            takenAt: "2024-05-01T10:00:00")
+        var records = [PhotoRecord(
+            photoId: "p1", path: m.path, width: 40, height: 30, takenAt: "2024-05-01T10:00:00",
+            sharpness: 1, exposure: 0.5, quality: 0.5, isBlurry: false,
+            faces: [
+                FaceRecord(faceId: "f1", bbox: SIMD4(1, 2, 3, 4), confidence: 0.9, personCluster: 1,
+                           embedding: [0.6, 0.8, 0]),
+                FaceRecord(faceId: "f2", bbox: SIMD4(1, 2, 3, 4), confidence: 0.9, embedding: nil),
+            ])]
+        var people = [PersonRecord(
+            clusterId: 1, faceIds: ["f1"], photoIds: ["p1"], embeddingModel: "sface", centroid: [0.6, 0.8, 0])]
+        let runId = String(repeating: "b", count: 32)
+        let manifest: JSONValue = [
+            "run_id": .string(runId), "started_at": "2024-05-01T10:00:00+00:00",
+            "generated_at": "2024-05-01T10:01:00+00:00", "face_backend": "dnn", "config": [:], "summary": [:],
+        ]
+        _ = try AnalysisStore.save(
+            database: dbPath, source: src, output: dir + "/out", manifest: manifest, records: records,
+            people: people, metadata: [m], faceSimilarity: 0.5, stories: [])
+        #expect(records[0].faces[0].personId == nil)
+        try Pipeline.syncPeople(database: dbPath, runId: runId, records: &records, people: &people)
+        #expect(records[0].faces[0].personId != nil)
+        #expect(records[0].faces[1].personId == nil)
+        #expect(people[0].personId == records[0].faces[0].personId)
+        #expect(people[0].publicId != nil)
+    }
+}

@@ -1,8 +1,7 @@
 import Foundation
 
 public enum RankingStore {
-    // Equals RankingFeatures.version (T2); held locally so this file builds before T2 lands.
-    static let featureVersion = 1
+    static let featureVersion = RankingFeatures.version
 
     public static func saveModel(_ db: Database, kind: String, model: LogisticModel, metrics: JSONValue,
                                  active: Bool) throws -> Int {

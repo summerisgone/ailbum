@@ -199,7 +199,7 @@ public enum Pipeline {
             "error": .null,
         ]
         let faces = records.flatMap { $0.faces }
-        let manifest: JSONValue = [
+        var manifest: JSONValue = [
             "schema_version": .int(6),
             "run_id": .string(Catalog.newRunId()),
             "started_at": .string(startedAt),
@@ -242,10 +242,16 @@ public enum Pipeline {
         ]
         if let database {
             emit("Этап: Сохранение|Записываем результаты анализа в базу данных")
-            _ = try AnalysisStore.save(
+            let runId = try AnalysisStore.save(
                 database: database, source: source, output: output, manifest: manifest,
                 records: records, people: people, metadata: metadataList,
                 faceSimilarity: faceSimilarity, stories: stories)
+            try syncPeople(database: database, runId: runId, records: &records, people: &people)
+            if case .object(var o) = manifest {
+                o["people_groups"] = .array(people.map { $0.toJSON() })
+                o["photos"] = .array(records.map { $0.toJSON() })
+                manifest = .object(o)
+            }
         }
         emit("Этап: Завершение|Формируем файлы результатов")
         try writeOutputs(output, manifest: manifest, records: records)
@@ -253,6 +259,34 @@ public enum Pipeline {
     }
 
     // MARK: helpers
+
+    /// Copies DB-assigned person ids (and public id/name) back into records, as `save_analysis` does in Python.
+    static func syncPeople(
+        database: String, runId: String, records: inout [PhotoRecord], people: inout [PersonRecord]
+    ) throws {
+        let db = try Database.open(path: database)
+        var byFace: [String: Int] = [:]
+        var byCluster: [Int: Int] = [:]
+        for row in try db.query(
+            "SELECT face_id, person_cluster, person_id FROM faces WHERE run_id = ? AND person_id IS NOT NULL",
+            [.text(runId)]) {
+            guard case .integer(let pid)? = row["person_id"] else { continue }
+            if case .text(let f)? = row["face_id"] { byFace[f] = Int(pid) }
+            if case .integer(let c)? = row["person_cluster"] { byCluster[Int(c)] = Int(pid) }
+        }
+        for i in records.indices {
+            for j in records[i].faces.indices {
+                records[i].faces[j].personId = byFace[records[i].faces[j].faceId]
+            }
+        }
+        for k in people.indices {
+            guard let pid = byCluster[people[k].clusterId] else { continue }
+            people[k].personId = pid
+            let rows = try db.query("SELECT public_id, name FROM people WHERE id = ?", [.integer(Int64(pid))])
+            if case .text(let p)? = rows.first?["public_id"] { people[k].publicId = p }
+            if case .text(let n)? = rows.first?["name"] { people[k].name = n }
+        }
+    }
 
     static func makeCache(
         _ config: PipelineConfig, output: String, database: String?, faceBackend: String,
