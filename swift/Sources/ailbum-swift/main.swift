@@ -2,7 +2,7 @@ import AilbumCore
 import Foundation
 
 func fail(_ message: String, code: Int32) -> Never {
-    FileHandle.standardError.write(Data(("ошибка: " + message + "\n").utf8))
+    FileHandle.standardError.write(Data(("Ошибка: " + message + "\n").utf8))
     exit(code)
 }
 
@@ -27,27 +27,38 @@ func count(_ db: Database, _ table: String) throws -> Int {
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
-let compareOK = args.count == 3 && args[0] == "compare"
-guard compareOK || (args.count == 2 && args[0] == "analyze-image") || (args.count == 2 && (args[0] == "quality" || args[0] == "db-stats")) else {
-    FileHandle.standardError.write(Data("usage: ailbum-swift quality <image> | db-stats <db> | analyze-image <image> | compare <image> <image>\n".utf8))
+
+let eventEncoder: JSONEncoder = {
+    let e = JSONEncoder()
+    e.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+    return e
+}()
+
+if args.first == "job" {
+    let code = DesktopJob.run(Array(args.dropFirst())) { event in
+        if let data = try? eventEncoder.encode(event) {
+            print(String(decoding: data, as: UTF8.self))
+            fflush(stdout)
+        }
+    }
+    exit(code)
+}
+
+do {
+    if let code = try CLIAlbums.run(args, out: { print($0); fflush(stdout) }, input: { readLine() }) { exit(code) }
+    if let code = try CLICatalog.run(args, out: { print($0); fflush(stdout) }) { exit(code) }
+} catch {
+    if case AilbumError.invalid(let message) = error { fail(message, code: 2) }
+    fail("\(error)", code: 2)
+}
+
+guard (args.count == 2 && args[0] == "analyze-image") || (args.count == 2 && (args[0] == "quality" || args[0] == "db-stats")) else {
+    FileHandle.standardError.write(Data("usage: ailbum-swift job <kind> ... | album|forget|ranking|db|analyze|index|people|models|compare|evaluate ... | quality <image> | db-stats <db> | analyze-image <image>\n".utf8))
     exit(64)
 }
 
 do {
-    if args[0] == "compare" {
-        for path in args[1...2] where !FileManager.default.fileExists(atPath: path) {
-            fail("файл не найден: \(path)", code: 2)
-        }
-        let a = try SIFT.extract(try ImageLoader.load(path: args[1]))
-        let b = try SIFT.extract(try ImageLoader.load(path: args[2]))
-        let s = try Similarity.geometric(a, b)
-        func r4(_ v: Double) -> Double { (v * 10000).rounded() / 10000 }
-        printJSON([
-            "score": r4(s.score), "mutual_matches": s.mutualMatches, "inliers": s.inliers,
-            "inlier_ratio": r4(s.inlierRatio), "coverage_left": r4(s.coverageLeft),
-            "coverage_right": r4(s.coverageRight),
-        ])
-    } else if args[0] == "analyze-image" {
+    if args[0] == "analyze-image" {
         let path = args[1]
         guard FileManager.default.fileExists(atPath: path) else { fail("файл не найден: \(path)", code: 2) }
         let image = try ImageLoader.load(path: path)
