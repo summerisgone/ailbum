@@ -14,6 +14,10 @@ let package = Package(
             name: "ailbum-swift",
             dependencies: ["AilbumCore"]
         ),
+        .executableTarget(
+            name: "AilbumApp",
+            dependencies: ["AilbumCore"]
+        ),
         .testTarget(
             name: "AilbumCoreTests",
             dependencies: ["AilbumCore"],
